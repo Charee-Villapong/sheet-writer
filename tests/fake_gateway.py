@@ -9,6 +9,11 @@ SheetsGateway プロトコルと同じ4メソッドを持ち、`batch_update` �
 - ignore_column_widths: 列幅の変更を黙って捨てる
 - ignore_repeat_cell: 書式（WRAP 等）の変更を黙って捨てる
 - drop_appended_values: append しても値を保持しない
+- ignore_background_clear: repeatCell のフィールドマスクによる背景色の
+  除去（マスクに挙がっているのに cell に無いフィールドの削除）を無視する
+- keep_appended_background: append した行に上の行の背景色を持ち込ませ、
+  かつ背景色の除去を無視する（実 API の append 書式継承で背景が
+  付いてしまう状況の再現）
 """
 
 import copy
@@ -92,6 +97,8 @@ class FakeGateway:
         ignore_column_widths=False,
         ignore_repeat_cell=False,
         drop_appended_values=False,
+        ignore_background_clear=False,
+        keep_appended_background=False,
     ):
         self._state = copy.deepcopy(state)
         if not getattr(self._state, "entered_values", None):
@@ -99,6 +106,8 @@ class FakeGateway:
         self.ignore_column_widths = ignore_column_widths
         self.ignore_repeat_cell = ignore_repeat_cell
         self.drop_appended_values = drop_appended_values
+        self.ignore_background_clear = ignore_background_clear
+        self.keep_appended_background = keep_appended_background
         # 検証用に、受け取ったリクエストと append 呼び出しを記録する
         self.batch_requests = []
         self.append_calls = []
@@ -116,6 +125,12 @@ class FakeGateway:
         self.append_calls.append((spreadsheet_id, range_a1, copy.deepcopy(values)))
         start_row = len(self._state.values) + 1  # 1始まり
         end_row = start_row + len(values) - 1
+        # keep_appended_background 用: 追記前の最終行の背景を覚えておく
+        source_formats = (
+            copy.deepcopy(self._state.cell_formats[-1])
+            if self.keep_appended_background and self._state.cell_formats
+            else None
+        )
         if not self.drop_appended_values:
             n_cols = max(
                 [len(row) for row in self._state.values]
@@ -137,7 +152,17 @@ class FakeGateway:
             for row in values:
                 padded = list(row) + [""] * (n_cols - len(row))
                 self._state.values.append(padded)
-                self._state.cell_formats.append([{} for _ in range(n_cols)])
+                new_formats = [{} for _ in range(n_cols)]
+                if source_formats is not None:
+                    # 実 API の append は上の行の書式を引き継ぐため、
+                    # 背景色も持ち込まれる状況を再現する
+                    for c in range(min(n_cols, len(source_formats))):
+                        for key in ("backgroundColor", "backgroundColorStyle"):
+                            if key in source_formats[c]:
+                                new_formats[c][key] = copy.deepcopy(
+                                    source_formats[c][key]
+                                )
+                self._state.cell_formats.append(new_formats)
                 self._state.row_heights.append(None)
                 self._state.entered_values.append(_entered_for_row(padded))
         tab = range_a1.split("!")[0] if "!" in range_a1 else "Sheet1"
@@ -180,8 +205,23 @@ class FakeGateway:
         if self.ignore_repeat_cell:
             return
         rng = body.get("range", {})
-        fmt = body.get("cell", {}).get("userEnteredFormat")
-        if not fmt:
+        fmt = body.get("cell", {}).get("userEnteredFormat") or {}
+        # 実 API のフィールドマスク意味論: マスクに挙がっているのに
+        # cell に無いフィールドは削除される（背景色の除去はこれで担保する）。
+        fields = body.get("fields", "") or ""
+        mask_leaves = {
+            token.strip().rstrip(")").split(".")[-1].lstrip("(")
+            for token in str(fields).split(",")
+            if token.strip()
+        }
+        clear_background = {
+            key
+            for key in ("backgroundColor", "backgroundColorStyle")
+            if key in mask_leaves and key not in fmt
+        }
+        if self.ignore_background_clear or self.keep_appended_background:
+            clear_background = set()
+        if not fmt and not clear_background:
             return
         row_start = rng.get("startRowIndex", 0)
         row_end = rng.get("endRowIndex", row_start + 1)
@@ -192,4 +232,8 @@ class FakeGateway:
                 if r < len(self._state.cell_formats) and c < len(
                     self._state.cell_formats[r]
                 ):
-                    _merge(self._state.cell_formats[r][c], fmt)
+                    cell = self._state.cell_formats[r][c]
+                    if fmt:
+                        _merge(cell, fmt)
+                    for key in clear_background:
+                        cell.pop(key, None)
