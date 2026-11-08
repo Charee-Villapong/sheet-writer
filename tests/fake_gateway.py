@@ -14,6 +14,8 @@ SheetsGateway プロトコルと同じ4メソッドを持ち、`batch_update` �
 - keep_appended_background: append した行に上の行の背景色を持ち込ませ、
   かつ背景色の除去を無視する（実 API の append 書式継承で背景が
   付いてしまう状況の再現）
+- ignore_text_format: repeatCell の textFormat だけを黙って捨てる
+  （他の書式キーは通常どおり反映する）
 """
 
 import copy
@@ -99,6 +101,7 @@ class FakeGateway:
         drop_appended_values=False,
         ignore_background_clear=False,
         keep_appended_background=False,
+        ignore_text_format=False,
     ):
         self._state = copy.deepcopy(state)
         if not getattr(self._state, "entered_values", None):
@@ -108,6 +111,7 @@ class FakeGateway:
         self.drop_appended_values = drop_appended_values
         self.ignore_background_clear = ignore_background_clear
         self.keep_appended_background = keep_appended_background
+        self.ignore_text_format = ignore_text_format
         # 検証用に、受け取ったリクエストと append 呼び出しを記録する
         self.batch_requests = []
         self.append_calls = []
@@ -206,6 +210,8 @@ class FakeGateway:
             return
         rng = body.get("range", {})
         fmt = body.get("cell", {}).get("userEnteredFormat") or {}
+        if self.ignore_text_format and "textFormat" in fmt:
+            fmt = {k: v for k, v in fmt.items() if k != "textFormat"}
         # 実 API のフィールドマスク意味論: マスクに挙がっているのに
         # cell に無いフィールドは削除される（背景色の除去はこれで担保する）。
         fields = body.get("fields", "") or ""
