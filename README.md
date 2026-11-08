@@ -56,11 +56,16 @@ python -m sheet_writer.cli check --config config.local.json --target task-ledger
 
 台帳「Muse のタスク台帳」への行追加は、Sheets を直接編集せず本 tool の `append` を使う。列は No. / タスク / 状態 / 止まってる理由・前提条件 / 前提の確認方法 / 期日・次回確認日 / 関連リンク / 最終更新。複数文を入れるセルは「。」ごとに改行して渡す。
 
-## 載せ替え状況
+## 載せ替え状況（第1波・2026-11-08 実施済み）
 
-- interview-notes の面談一覧: ゲートウェイの行追加経路を本 tool 経由に差し替え（対象は当該リポジトリ側の変更として実施）
-- cron-watchdog の見守り cron: 異常履歴への追記を本 tool 経由に変更。台帳タブ更新の後は `check` で書式を検証する
-- タスク台帳: 取りまとめの行追加は本 tool の CLI を使う（本 README の手順）
+- interview-notes の面談一覧: ゲートウェイの行追加経路を本 tool 経由に差し替え済み（interview-notes 側コミット `0cdc7c5`）。列ポリシーは A〜C が fit、D〜F が wrap 300px。tool の場所は設定 `sheet_writer_src` で与え、未設定時は兄弟ミラー配置から導出する。実経路で試験行を1行追加し、違反ゼロを読み戻しで確認後に削除済み
+- cron-watchdog の見守り cron（`cron-watchdog-check`）: 異常履歴への追記を本 tool 経由に変更し、台帳タブ更新の後に `check --fix`（書式のみ）で検査する手順へ移行済み。ローカル設定は `~/workspace/cron-watchdog-data/sheet-writer.local.json`（実 ID を含むためリポジトリ外）。異常履歴タブへの試験行追加→読み戻し確認→削除まで実地確認済み。移行前に検出された既存違反（台帳タブの行高、異常履歴の折り返し未設定）は、次回の cron 実行時に `check --fix` で自動修正される
+- タスク台帳: 取りまとめの行追加は本 tool の CLI を使う（本 README の手順）。ローカル設定は `~/workspace/task-ledger-data/sheet-writer.local.json`。試験行は書かず、`check --fix` の実地確認で書式のみの自動修正が効くことを確認済み
+
+## 注意（実地確認で判明した点）
+
+- 値の書き込みは `USER_ENTERED` のため、日時・数値らしい文字列は Sheets 側で解釈される。不正な形式の日時文字列などは変換で化けることがあるが、その場合は書き込み後の検証が不一致を検出してエラーで返す（黙って成功にはならない）。化けた行が残ることがあるため、エラー時は対象行を確認すること
+- 検査役は「内容のない行」を行高不足の対象にしない（グリッドの残り行は既定行高のままでよい）
 
 ## テスト
 
