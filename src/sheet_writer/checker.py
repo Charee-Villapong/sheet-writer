@@ -1,6 +1,6 @@
 """検査役: 既存シートの見切れ違反を検出し、書式のみを自動修正する。
 
-検出する違反は4種:
+検出する違反は5種:
 - ``width``: fit 列で必要幅 > 現在幅。wrap 列も設定幅 > 現在幅なら対象
   （無条件: 現在幅が既定幅 100px の列や幅未設定の列も対象で、
   未設定は既定 100px として扱う）
@@ -8,9 +8,13 @@
 - ``row_height``: 推定必要行高 > 現在の行高
 - ``background``: ``background_rule`` 有効時、データ行のセルに背景色が
   設定されている（ヘッダー行は対象外、白の明示設定も違反）
+- ``checkbox``: ``checkbox_columns`` で列挙した列について、データ行の
+  セルに真偽値が入っているのに BOOLEAN の入力規則がない
+  （ヘッダー行・空セル・真偽値でないセルは対象外）
 
-``fix_sheet`` は書式（列幅の拡大・WRAP 設定・行高の拡大）のみを直す。
-値・数式には絶対に触らない。
+``fix_sheet`` は書式（列幅の拡大・WRAP 設定・行高の拡大）と入力規則
+（チェックボックスの BOOLEAN 設定）のみを直す。値・数式には絶対に
+触らない。
 """
 
 from __future__ import annotations
@@ -33,6 +37,32 @@ _DEFAULT_HEIGHT_PX = 21
 
 # 背景色とみなす userEnteredFormat のキー
 _BACKGROUND_KEYS = ("backgroundColor", "backgroundColorStyle")
+
+# チェックボックスとみなす入力規則（dataValidation の condition.type）
+_CHECKBOX_RULE_TYPE = "BOOLEAN"
+
+
+def _set_checkbox_request(sheet_id: int, row: int, col: int) -> dict:
+    """チェックボックスの入力規則を設定するリクエスト。
+
+    対象セルの dataValidation を BOOLEAN 条件で置き換えるだけであり、
+    値・書式には触らない。
+    """
+    return {
+        "setDataValidation": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": row,
+                "endRowIndex": row + 1,
+                "startColumnIndex": col,
+                "endColumnIndex": col + 1,
+            },
+            "rule": {
+                "condition": {"type": _CHECKBOX_RULE_TYPE},
+                "showCustomUi": True,
+            },
+        }
+    }
 
 
 def _clear_background_request(sheet_id: int, row: int, col: int) -> dict:
@@ -91,6 +121,40 @@ def _format(state: SheetState, row: int, col: int) -> dict:
     if row < len(state.cell_formats) and col < len(state.cell_formats[row]):
         return state.cell_formats[row][col]
     return {}
+
+
+def _entered(state: SheetState, row: int, col: int) -> dict:
+    entered_values = getattr(state, "entered_values", None) or []
+    if row < len(entered_values) and col < len(entered_values[row]):
+        cell = entered_values[row][col]
+        return cell if isinstance(cell, dict) else {}
+    return {}
+
+
+def _validation_type(state: SheetState, row: int, col: int) -> str | None:
+    """セルの入力規則の condition.type。規則がなければ None。"""
+    validations = getattr(state, "data_validations", None) or []
+    if row < len(validations) and col < len(validations[row]):
+        validation = validations[row][col]
+        if isinstance(validation, dict):
+            condition = validation.get("condition")
+            if isinstance(condition, dict):
+                rule_type = condition.get("type")
+                if isinstance(rule_type, str):
+                    return rule_type
+    return None
+
+
+def _has_boolean_value(state: SheetState, row: int, col: int) -> bool:
+    """セルに真偽値が入っているか。
+
+    boolValue の入力があるか、表示値が "TRUE" / "FALSE" のいずれか。
+    文字列として打たれた "FALSE" も、チェックボックス列では真偽値の
+    つもりの入力であり、入力規則の欠落は同じ不整合として扱う。
+    """
+    if "boolValue" in _entered(state, row, col):
+        return True
+    return _cell(state, row, col) in ("TRUE", "FALSE")
 
 
 def _n_cols(state: SheetState) -> int:
@@ -240,6 +304,27 @@ def check_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Vio
                     )
                 )
 
+    for letter in target.checkbox_columns:
+        col = column_index(letter)
+        for row in range(1, n_rows):
+            if not _has_boolean_value(state, row, col):
+                continue
+            actual_type = _validation_type(state, row, col)
+            if actual_type == _CHECKBOX_RULE_TYPE:
+                continue
+            violations.append(
+                Violation(
+                    kind="checkbox",
+                    location=f"{letter}{row + 1}",
+                    expected=_CHECKBOX_RULE_TYPE,
+                    actual=actual_type or "未設定",
+                    detail=(
+                        f"セル {letter}{row + 1} に真偽値が入っているが"
+                        "チェックボックス（BOOLEAN）の入力規則がない"
+                    ),
+                )
+            )
+
     for row in range(1, n_rows):
         if not any(_cell(state, row, col) != "" for col in range(n_cols)):
             continue  # 内容のない行は見切れの対象外（グリッドの残り行など）
@@ -267,7 +352,10 @@ def check_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Vio
 
 
 def fix_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Violation]:
-    """違反を書式のみで修正し、修正した違反を返す。値・数式には触らない。"""
+    """違反を書式と入力規則のみで修正し、修正した違反を返す。
+
+    値・数式には触らない。
+    """
     violations = check_sheet(gateway, target, m)
     if not violations:
         return []
@@ -310,6 +398,12 @@ def fix_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Viola
             col = column_index(letter)
             row = int(number) - 1
             requests.append(_clear_background_request(sheet_id, row, col))
+        elif violation.kind == "checkbox":
+            letter = "".join(ch for ch in str(violation.location) if ch.isalpha())
+            number = "".join(ch for ch in str(violation.location) if ch.isdigit())
+            col = column_index(letter)
+            row = int(number) - 1
+            requests.append(_set_checkbox_request(sheet_id, row, col))
 
     if requests:
         gateway.batch_update(target.spreadsheet_id, requests)
