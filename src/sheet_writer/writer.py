@@ -266,6 +266,16 @@ def append_rows(
         + [0]
     )
     widths = compute_column_widths(state, target, rows, m, n_cols)
+    # ヘッダー行（1行目）は header_height_px を下限として担保する（縮めない）
+    intended_header_height: int | None = None
+    current_header_height: int | None = None
+    if state.values:
+        current_header_height = (
+            int(state.row_heights[0])
+            if state.row_heights and state.row_heights[0] is not None
+            else 21
+        )
+        intended_header_height = max(current_header_height, m.header_height_px)
     last_letter = column_letter(n_cols - 1) if n_cols else "A"
     updated_range = gateway.append_values(
         target.spreadsheet_id, f"{target.tab}!A:{last_letter}", rows
@@ -290,6 +300,12 @@ def append_rows(
         requests.append(
             _dimension_request(sheet_id, "COLUMNS", col, widths[column_letter(col)])
         )
+    if (
+        intended_header_height is not None
+        and current_header_height is not None
+        and current_header_height < m.header_height_px
+    ):
+        requests.append(_dimension_request(sheet_id, "ROWS", 0, m.header_height_px))
 
     intended_formats: dict[tuple[int, int], dict] = {}
     for i, row in enumerate(rows):
@@ -338,6 +354,7 @@ def append_rows(
         intended_heights,
         intended_formats,
         n_cols,
+        intended_header_height=intended_header_height,
     )
     return AppendResult(
         appended_rows=appended_rows,
@@ -355,9 +372,18 @@ def _verify(
     intended_heights: dict[int, int],
     intended_formats: dict[tuple[int, int], dict],
     n_cols: int,
+    intended_header_height: int | None = None,
 ) -> None:
     after = gateway.get_state(target.spreadsheet_id, target.tab)
     problems: list[str] = []
+
+    if intended_header_height is not None:
+        actual_header = after.row_heights[0] if after.row_heights else None
+        if actual_header != intended_header_height:
+            problems.append(
+                "行 1 の高さが意図と不一致: "
+                f"expected={intended_header_height} actual={actual_header}"
+            )
 
     for col in range(n_cols):
         letter = column_letter(col)

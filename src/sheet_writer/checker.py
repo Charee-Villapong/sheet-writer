@@ -89,6 +89,22 @@ def check_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Vio
     n_cols = _n_cols(state)
     violations: list[Violation] = []
 
+    if state.values:
+        actual_header_height = _height(state, 0)
+        if actual_header_height < m.header_height_px:
+            violations.append(
+                Violation(
+                    kind="row_height",
+                    location="1行目",
+                    expected=m.header_height_px,
+                    actual=actual_header_height,
+                    detail=(
+                        f"1行目（ヘッダー）の行高 {actual_header_height}px が"
+                        f"担保値 {m.header_height_px}px 未満"
+                    ),
+                )
+            )
+
     header = state.values[0] if state.values else []
     for col in range(n_cols):
         letter = column_letter(col)
