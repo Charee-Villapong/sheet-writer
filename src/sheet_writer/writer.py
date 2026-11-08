@@ -27,6 +27,8 @@ _INHERIT_KEYS = (
     "wrapStrategy",
 )
 _TEXT_FORMAT_KEYS = ("bold", "italic", "fontSize", "fontFamily")
+# 背景色とみなす書式キー（background_rule 有効時は継承・残存を禁止する）
+_BACKGROUND_KEYS = ("backgroundColor", "backgroundColorStyle")
 # 検証で突き合わせる書式キー
 _VERIFY_FORMAT_KEYS = (
     "backgroundColor",
@@ -180,10 +182,16 @@ def compute_column_widths(
     return widths
 
 
-def _inherit_format(fmt: dict) -> dict:
-    """上の行の userEnteredFormat から、設定可能なキーだけを引き継ぐ。"""
+def _inherit_format(fmt: dict, *, drop_background: bool = False) -> dict:
+    """上の行の userEnteredFormat から、設定可能なキーだけを引き継ぐ。
+
+    ``drop_background`` 時は背景色キー（``backgroundColor`` /
+    ``backgroundColorStyle``）を持ち込まない。
+    """
     inherited: dict = {}
     for key in _INHERIT_KEYS:
+        if drop_background and key in _BACKGROUND_KEYS:
+            continue
         if key in fmt:
             inherited[key] = copy.deepcopy(fmt[key])
     text_format = fmt.get("textFormat")
@@ -319,7 +327,13 @@ def append_rows(
         if source < 1:
             source = -1  # データ行が無い場合は継承しない
         for col in range(n_cols):
-            fmt = _inherit_format(working[source][col]) if source >= 0 else {}
+            fmt = (
+                _inherit_format(
+                    working[source][col], drop_background=target.background_rule
+                )
+                if source >= 0
+                else {}
+            )
             policy = _policy_for(target, column_letter(col))
             if policy.mode == "wrap":
                 fmt["wrapStrategy"] = "WRAP"
@@ -355,6 +369,7 @@ def append_rows(
         intended_formats,
         n_cols,
         intended_header_height=intended_header_height,
+        background_rule=target.background_rule,
     )
     return AppendResult(
         appended_rows=appended_rows,
@@ -373,6 +388,7 @@ def _verify(
     intended_formats: dict[tuple[int, int], dict],
     n_cols: int,
     intended_header_height: int | None = None,
+    background_rule: bool = False,
 ) -> None:
     after = gateway.get_state(target.spreadsheet_id, target.tab)
     problems: list[str] = []
@@ -434,6 +450,14 @@ def _verify(
                         f"意図と不一致: expected={intended[key]} "
                         f"actual={actual_fmt.get(key)}"
                     )
+            if background_rule:
+                # 負側の明示チェック: 意図に無い背景色が残っていたら不一致
+                for key in _BACKGROUND_KEYS:
+                    if key in actual_fmt:
+                        problems.append(
+                            f"セル {column_letter(col)}{row_number} に背景色 "
+                            f"{key} が残っている: actual={actual_fmt.get(key)}"
+                        )
 
     if problems:
         raise VerificationError(" / ".join(problems))
