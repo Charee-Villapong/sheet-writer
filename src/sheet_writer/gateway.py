@@ -17,13 +17,14 @@ CLI_PATH = "/opt/hatch/bin/hatch_gws_cli"
 _STATE_FIELDS = (
     "sheets(properties(sheetId,title),"
     "data(rowMetadata,columnMetadata,"
-    "rowData(values(formattedValue,userEnteredValue,userEnteredFormat))))"
+    "rowData(values(formattedValue,userEnteredValue,userEnteredFormat,"
+    "dataValidation))))"
 )
 
 
 @dataclass
 class SheetState:
-    """あるタブの状態スナップショット（値・寸法・セル書式）。"""
+    """あるタブの状態スナップショット（値・寸法・セル書式・入力規則）。"""
 
     sheet_id: int
     values: list[list[str]]
@@ -31,6 +32,7 @@ class SheetState:
     row_heights: list[int | None]
     cell_formats: list[list[dict]]
     entered_values: list[list[dict]] = field(default_factory=list)
+    data_validations: list[list[dict]] = field(default_factory=list)
 
 
 class SheetsGateway(Protocol):
@@ -151,6 +153,7 @@ class CliGateway:
         values: list[list[str]] = []
         cell_formats: list[list[dict]] = []
         entered_values: list[list[dict]] = []
+        data_validations: list[list[dict]] = []
         for r in range(n_rows):
             cells = []
             if r < len(row_data):
@@ -158,15 +161,21 @@ class CliGateway:
             value_row: list[str] = []
             format_row: list[dict] = []
             entered_row: list[dict] = []
+            validation_row: list[dict] = []
             for c in range(n_cols):
                 cell = cells[c] if c < len(cells) else {}
                 value_row.append(str(cell.get("formattedValue", "")))
                 format_row.append(dict(cell.get("userEnteredFormat") or {}))
                 entered = cell.get("userEnteredValue")
                 entered_row.append(dict(entered) if isinstance(entered, dict) else {})
+                validation = cell.get("dataValidation")
+                validation_row.append(
+                    dict(validation) if isinstance(validation, dict) else {}
+                )
             values.append(value_row)
             cell_formats.append(format_row)
             entered_values.append(entered_row)
+            data_validations.append(validation_row)
 
         column_widths = [
             (entry.get("pixelSize") if isinstance(entry, dict) else None)
@@ -187,6 +196,7 @@ class CliGateway:
             row_heights=row_heights,
             cell_formats=cell_formats,
             entered_values=entered_values,
+            data_validations=data_validations,
         )
 
     @staticmethod

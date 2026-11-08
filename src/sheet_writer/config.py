@@ -47,6 +47,7 @@ class Target:
     columns: dict[str, ColumnPolicy] = field(default_factory=dict)
     background_rule: bool = False
     append_anchor_column: str | None = None
+    checkbox_columns: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         anchor = self.append_anchor_column
@@ -56,6 +57,16 @@ class Target:
             raise ValueError(
                 f"append_anchor_column は大文字の列名である必要があります: {anchor!r}"
             )
+        cols = self.checkbox_columns
+        if not isinstance(cols, (list, tuple)) or any(
+            not isinstance(col, str) or re.fullmatch(r"[A-Z]+", col) is None
+            for col in cols
+        ):
+            raise ValueError(
+                "checkbox_columns は大文字の列名の並びである必要があります: "
+                f"{cols!r}"
+            )
+        object.__setattr__(self, "checkbox_columns", tuple(cols))
 
 
 @dataclass(frozen=True)
@@ -88,6 +99,7 @@ def load_config(path: str | Path) -> Config:
             "columns",
             "background_rule",
             "append_anchor_column",
+            "checkbox_columns",
         }
         for name, entry in targets_raw.items():
             if not isinstance(entry, dict):
@@ -105,6 +117,12 @@ def load_config(path: str | Path) -> Config:
                 raise ValueError(
                     f"ターゲット {name} の background_rule は"
                     " 真偽値である必要があります"
+                )
+            checkbox_columns = entry.get("checkbox_columns", [])
+            if not isinstance(checkbox_columns, list):
+                raise ValueError(
+                    f"ターゲット {name} の checkbox_columns は"
+                    " 列名の配列である必要があります"
                 )
             columns_raw = entry.get("columns") or {}
             if not isinstance(columns_raw, dict):
@@ -129,6 +147,7 @@ def load_config(path: str | Path) -> Config:
                 columns=columns,
                 background_rule=background_rule,
                 append_anchor_column=entry.get("append_anchor_column"),
+                checkbox_columns=tuple(checkbox_columns),
             )
     except ValueError:
         raise
