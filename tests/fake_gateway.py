@@ -79,7 +79,10 @@ def _synth_entered(values):
 
 
 def make_state(
-    values, column_widths=None, row_heights=None, cell_formats=None,
+    values,
+    column_widths=None,
+    row_heights=None,
+    cell_formats=None,
     data_validations=None,
 ):
     """values を中心に、寸法・書式・入力規則の既定値を補った SheetState を作る。"""
@@ -100,9 +103,11 @@ def make_state(
     else:
         validations = [
             [
-                copy.deepcopy(data_validations[r][c])
-                if c < len(data_validations[r])
-                else {}
+                (
+                    copy.deepcopy(data_validations[r][c])
+                    if c < len(data_validations[r])
+                    else {}
+                )
                 for c in range(n_cols)
             ]
             for r in range(len(padded_values))
