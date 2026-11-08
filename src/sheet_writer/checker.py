@@ -1,7 +1,8 @@
 """検査役: 既存シートの見切れ違反を検出し、書式のみを自動修正する。
 
 検出する違反は4種:
-- ``width``: fit 列で必要幅 > 現在幅
+- ``width``: fit 列で必要幅 > 現在幅。wrap 列も設定幅 > 現在幅なら対象
+  （ただし現在幅が既定幅の列は未設定とみなし対象外）
 - ``wrap``: 内容が列幅に収まらないのに WRAP が未設定
 - ``row_height``: 推定必要行高 > 現在の行高
 - ``background``: ``background_rule`` 有効時、データ行のセルに背景色が
@@ -139,6 +140,24 @@ def check_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Vio
     for col in range(n_cols):
         letter = column_letter(col)
         policy = _policy_for(target, letter)
+        if policy.mode == "wrap":
+            policy_width = policy.width_px or m.default_wrap_width_px
+            actual_width = _width(state, col)
+            # 既定幅のままの列は「幅が未設定」とみなし、幅違反の対象にしない
+            if actual_width != _DEFAULT_WIDTH_PX and actual_width < policy_width:
+                violations.append(
+                    Violation(
+                        kind="width",
+                        location=letter,
+                        expected=policy_width,
+                        actual=actual_width,
+                        detail=(
+                            f"列 {letter} の幅 {actual_width}px が"
+                            f"設定幅 {policy_width}px 未満"
+                        ),
+                    )
+                )
+            continue
         if policy.mode != "fit":
             continue
         data_texts = [_cell(state, r, col) for r in range(1, len(state.values))]
