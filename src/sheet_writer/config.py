@@ -7,6 +7,7 @@ JSON 形式は ``config.example.json`` と同形。実 ID を書いた設定フ�
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -47,6 +48,15 @@ class Target:
     background_rule: bool = False
     append_anchor_column: str | None = None
 
+    def __post_init__(self) -> None:
+        anchor = self.append_anchor_column
+        if anchor is not None and (
+            not isinstance(anchor, str) or re.fullmatch(r"[A-Z]+", anchor) is None
+        ):
+            raise ValueError(
+                f"append_anchor_column は大文字の列名である必要があります: {anchor!r}"
+            )
+
 
 @dataclass(frozen=True)
 class Config:
@@ -72,10 +82,29 @@ def load_config(path: str | Path) -> Config:
         if not isinstance(targets_raw, dict):
             raise ValueError("targets は JSON オブジェクトである必要があります")
         targets: dict[str, Target] = {}
+        known_target_keys = {
+            "spreadsheet_id",
+            "tab",
+            "columns",
+            "background_rule",
+            "append_anchor_column",
+        }
         for name, entry in targets_raw.items():
             if not isinstance(entry, dict):
                 raise ValueError(
                     f"ターゲット {name} は JSON オブジェクトである必要があります"
+                )
+            unknown_keys = set(entry) - known_target_keys
+            if unknown_keys:
+                raise ValueError(
+                    f"ターゲット {name} に未知のキーがあります: "
+                    f"{', '.join(sorted(unknown_keys))}"
+                )
+            background_rule = entry.get("background_rule", False)
+            if not isinstance(background_rule, bool):
+                raise ValueError(
+                    f"ターゲット {name} の background_rule は"
+                    " 真偽値である必要があります"
                 )
             columns_raw = entry.get("columns") or {}
             if not isinstance(columns_raw, dict):
@@ -98,7 +127,7 @@ def load_config(path: str | Path) -> Config:
                 spreadsheet_id=entry["spreadsheet_id"],
                 tab=entry["tab"],
                 columns=columns,
-                background_rule=bool(entry.get("background_rule") or False),
+                background_rule=background_rule,
                 append_anchor_column=entry.get("append_anchor_column"),
             )
     except ValueError:

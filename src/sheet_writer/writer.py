@@ -321,6 +321,14 @@ def append_rows(
     rows = [list(row) for row in rows]
 
     state = gateway.get_state(target.spreadsheet_id, target.tab)
+    if target.append_anchor_column and (
+        _anchor_last_row(state, target.append_anchor_column) == 0
+    ):
+        # anchor 列に値のある行が1つも無いと追加位置が定まらない。
+        # gateway へ一切書き込まずに止める
+        raise ValueError(
+            f"anchor 列 {target.append_anchor_column} に値のある行がありません"
+        )
     sheet_id = state.sheet_id
     n_cols = max(
         [len(row) for row in state.values]
