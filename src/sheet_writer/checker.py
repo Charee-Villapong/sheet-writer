@@ -96,6 +96,23 @@ def _n_cols(state: SheetState) -> int:
     return max([len(row) for row in state.values] + [len(state.column_widths)] + [0])
 
 
+def _scope_row_count(state: SheetState, target: Target) -> int:
+    """検査対象の行数（ヘッダー行を含む）。
+
+    ``append_anchor_column`` 設定時は「anchor 列に値のある最終行」までを
+    対象とし、それより下の行（他列に事前設定値のみの行など）は対象外。
+    未設定時は全行が対象。
+    """
+    if not target.append_anchor_column:
+        return len(state.values)
+    anchor_col = column_index(target.append_anchor_column)
+    last = 0
+    for row in range(len(state.values)):
+        if _cell(state, row, anchor_col) != "":
+            last = row + 1
+    return last
+
+
 def _display_lines(state: SheetState, row: int, col: int, m: Measures) -> int:
     """表示行数の推定。WRAP 有効時は折り返し行数、無効時は改行数だけ数える。"""
     text = _cell(state, row, col)
@@ -118,6 +135,7 @@ def check_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Vio
     """違反を検出する。読み取りのみで、状態は一切変更しない。"""
     state = gateway.get_state(target.spreadsheet_id, target.tab)
     n_cols = _n_cols(state)
+    n_rows = _scope_row_count(state, target)
     violations: list[Violation] = []
 
     if state.values:
@@ -160,7 +178,7 @@ def check_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Vio
             continue
         if policy.mode != "fit":
             continue
-        data_texts = [_cell(state, r, col) for r in range(1, len(state.values))]
+        data_texts = [_cell(state, r, col) for r in range(1, n_rows)]
         needed = max(
             mz.needed_width_px(
                 [header[col] if col < len(header) else ""], bold=True, m=m
@@ -179,7 +197,7 @@ def check_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Vio
                 )
             )
 
-    for row in range(1, len(state.values)):
+    for row in range(1, n_rows):
         for col in range(n_cols):
             if not _segment_overflows(state, row, col, m):
                 continue
@@ -200,7 +218,7 @@ def check_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Vio
                 )
 
     if target.background_rule:
-        for row in range(1, len(state.values)):
+        for row in range(1, n_rows):
             for col in range(n_cols):
                 fmt = _format(state, row, col)
                 found = next((key for key in _BACKGROUND_KEYS if key in fmt), None)
@@ -220,7 +238,7 @@ def check_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Vio
                     )
                 )
 
-    for row in range(1, len(state.values)):
+    for row in range(1, n_rows):
         if not any(_cell(state, row, col) != "" for col in range(n_cols)):
             continue  # 内容のない行は見切れの対象外（グリッドの残り行など）
         lines = max(
