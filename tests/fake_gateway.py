@@ -16,9 +16,19 @@ SheetsGateway プロトコルと同じ4メソッドを持ち、`batch_update` �
   付いてしまう状況の再現）
 - ignore_text_format: repeatCell の textFormat だけを黙って捨てる
   （他の書式キーは通常どおり反映する）
+
+append の配置は実 API のテーブル検出を模す:
+- 範囲（range_a1）が全列範囲（例 "タブ!A:B" / "タブ!B:B"）なら、
+  その列範囲の中で値（空でないセル）のある最終行をテーブルの末尾とし、
+  新規行はその直後に挿入される（既存行は下へずれる。INSERT_ROWS 相当）。
+- 範囲が開始行を持つ有界範囲／単一セル（例 "タブ!A21:C21" / "タブ!A21"）
+  なら、その開始行へ挿入される。
+- 書き込み自体は従来どおり常に A 列から行う（範囲はテーブル検出の
+  対象列と開始位置を決めるためにだけ使う）。
 """
 
 import copy
+import re
 
 from sheet_writer.gateway import SheetState
 
@@ -33,6 +43,14 @@ def column_letter(index0):
         index0, rem = divmod(index0 - 1, 26)
         letter = chr(ord("A") + rem) + letter
     return letter
+
+
+def _column_index(letter):
+    """列文字（A, B, ...）を0始まりのインデックスに変換する。"""
+    index = 0
+    for ch in letter:
+        index = index * 26 + (ord(ch) - ord("A") + 1)
+    return index - 1
 
 
 def _entered_for(value):
@@ -125,16 +143,52 @@ class FakeGateway:
     def get_values(self, spreadsheet_id, range_a1):
         return copy.deepcopy(self._state.values)
 
+    def _append_start_row(self, range_a1):
+        """実 API のテーブル検出を模して、追加開始行（1始まり）を決める。"""
+        range_part = range_a1.rsplit("!", 1)[-1] if "!" in range_a1 else range_a1
+        range_part = range_part.strip().strip("'")
+        bounded = re.fullmatch(r"([A-Z]+)(\d+):([A-Z]+)(\d+)", range_part)
+        if bounded:
+            # 開始行つきの有界範囲は、その開始行への追加として扱う
+            return int(bounded.group(2))
+        single = re.fullmatch(r"([A-Z]+)(\d+)", range_part)
+        if single:
+            return int(single.group(2))
+        open_ended = re.fullmatch(r"([A-Z]+)(\d+):([A-Z]+)", range_part)
+        full_columns = re.fullmatch(r"([A-Z]+):([A-Z]+)", range_part)
+        if open_ended or full_columns:
+            match = open_ended or full_columns
+            col_start = _column_index(match.group(1))
+            if open_ended:
+                first_row = int(open_ended.group(2))
+                col_end = _column_index(open_ended.group(3))
+            else:
+                first_row = 1
+                col_end = _column_index(full_columns.group(2))
+            last = 0
+            for idx, row in enumerate(self._state.values):
+                row_number = idx + 1
+                if row_number < first_row:
+                    continue
+                if any(
+                    c < len(row) and row[c] not in ("", None)
+                    for c in range(col_start, col_end + 1)
+                ):
+                    last = row_number
+            return last + 1 if last else first_row
+        # 解釈できない範囲は従来どおり物理末尾の直後
+        return len(self._state.values) + 1
+
     def append_values(self, spreadsheet_id, range_a1, values):
         self.append_calls.append((spreadsheet_id, range_a1, copy.deepcopy(values)))
-        start_row = len(self._state.values) + 1  # 1始まり
+        start_row = self._append_start_row(range_a1)  # 1始まり
         end_row = start_row + len(values) - 1
-        # keep_appended_background 用: 追記前の最終行の背景を覚えておく
-        source_formats = (
-            copy.deepcopy(self._state.cell_formats[-1])
-            if self.keep_appended_background and self._state.cell_formats
-            else None
-        )
+        # keep_appended_background 用: 追加位置の上の行の背景を覚えておく
+        source_formats = None
+        if self.keep_appended_background and self._state.cell_formats:
+            above = start_row - 2  # 0始まりで「追加位置の1つ上」
+            if 0 <= above < len(self._state.cell_formats):
+                source_formats = copy.deepcopy(self._state.cell_formats[above])
         if not self.drop_appended_values:
             n_cols = max(
                 [len(row) for row in self._state.values]
@@ -153,9 +207,12 @@ class FakeGateway:
                 self._state.entered_values.append([{} for _ in range(n_cols)])
             while len(self._state.column_widths) < n_cols:
                 self._state.column_widths.append(None)
+            new_value_rows = []
+            new_format_rows = []
+            new_entered_rows = []
             for row in values:
                 padded = list(row) + [""] * (n_cols - len(row))
-                self._state.values.append(padded)
+                new_value_rows.append(padded)
                 new_formats = [{} for _ in range(n_cols)]
                 if source_formats is not None:
                     # 実 API の append は上の行の書式を引き継ぐため、
@@ -166,9 +223,19 @@ class FakeGateway:
                                 new_formats[c][key] = copy.deepcopy(
                                     source_formats[c][key]
                                 )
-                self._state.cell_formats.append(new_formats)
+                new_format_rows.append(new_formats)
+                new_entered_rows.append(_entered_for_row(padded))
+            insert_at = start_row - 1  # 0始まり
+            # 追加位置が物理末尾より先なら、間を空行で埋めてから追加する
+            while len(self._state.values) < insert_at:
+                self._state.values.append([""] * n_cols)
+                self._state.cell_formats.append([{} for _ in range(n_cols)])
                 self._state.row_heights.append(None)
-                self._state.entered_values.append(_entered_for_row(padded))
+                self._state.entered_values.append([{} for _ in range(n_cols)])
+            self._state.values[insert_at:insert_at] = new_value_rows
+            self._state.cell_formats[insert_at:insert_at] = new_format_rows
+            self._state.row_heights[insert_at:insert_at] = [None] * len(values)
+            self._state.entered_values[insert_at:insert_at] = new_entered_rows
         tab = range_a1.split("!")[0] if "!" in range_a1 else "Sheet1"
         last_col = column_letter(max((len(r) for r in values), default=1) - 1)
         return f"{tab}!A{start_row}:{last_col}{end_row}"
