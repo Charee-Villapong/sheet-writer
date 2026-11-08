@@ -2,7 +2,8 @@
 
 検出する違反は4種:
 - ``width``: fit 列で必要幅 > 現在幅。wrap 列も設定幅 > 現在幅なら対象
-  （ただし現在幅が既定幅の列は未設定とみなし対象外）
+  （無条件: 現在幅が既定幅 100px の列や幅未設定の列も対象で、
+  未設定は既定 100px として扱う）
 - ``wrap``: 内容が列幅に収まらないのに WRAP が未設定
 - ``row_height``: 推定必要行高 > 現在の行高
 - ``background``: ``background_rule`` 有効時、データ行のセルに背景色が
@@ -161,8 +162,9 @@ def check_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Vio
         if policy.mode == "wrap":
             policy_width = policy.width_px or m.default_wrap_width_px
             actual_width = _width(state, col)
-            # 既定幅のままの列は「幅が未設定」とみなし、幅違反の対象にしない
-            if actual_width != _DEFAULT_WIDTH_PX and actual_width < policy_width:
+            # 無条件に判定する: 既定幅 100px の列・幅未設定（既定扱い）の
+            # 列も、設定幅未満なら幅違反にする
+            if actual_width < policy_width:
                 violations.append(
                     Violation(
                         kind="width",
