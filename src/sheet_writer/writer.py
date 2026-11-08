@@ -29,6 +29,17 @@ _INHERIT_KEYS = (
 _TEXT_FORMAT_KEYS = ("bold", "italic", "fontSize", "fontFamily")
 # 背景色とみなす書式キー（background_rule 有効時は継承・残存を禁止する）
 _BACKGROUND_KEYS = ("backgroundColor", "backgroundColorStyle")
+# anchor 経路でフィールドマスクに挙げて残留を消す書式キー一式。
+# 継承キー（_INHERIT_KEYS）に backgroundColorStyle と textFormat を加えたもの
+_FORMAT_RESET_KEYS = (
+    "backgroundColor",
+    "backgroundColorStyle",
+    "horizontalAlignment",
+    "verticalAlignment",
+    "numberFormat",
+    "wrapStrategy",
+    "textFormat",
+)
 # 検証で突き合わせる書式キー
 _VERIFY_FORMAT_KEYS = (
     "backgroundColor",
@@ -249,6 +260,33 @@ def _format_request(sheet_id: int, row: int, col: int, fmt: dict) -> dict:
     }
 
 
+def _reset_format_request(sheet_id: int, row: int, col: int, fmt: dict) -> dict:
+    """anchor 経路専用の書式リクエスト（残留書式のリセット付き）。
+
+    全継承キーをドット形式のフィールドマスクに挙げる。マスクにあって
+    ``cell`` に無いフィールドは削除されるため、意図書式が空でも書込先
+    セルに残っていた書式（背景・numberFormat 等）が意図どおりに消える。
+    textFormat はサブキーも個別に挙げ、意図に無いサブキーを残さない。
+    """
+    fields = ",".join(
+        [f"userEnteredFormat.{key}" for key in _FORMAT_RESET_KEYS]
+        + [f"userEnteredFormat.textFormat.{key}" for key in _TEXT_FORMAT_KEYS]
+    )
+    return {
+        "repeatCell": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": row,
+                "endRowIndex": row + 1,
+                "startColumnIndex": col,
+                "endColumnIndex": col + 1,
+            },
+            "cell": {"userEnteredFormat": fmt},
+            "fields": fields,
+        }
+    }
+
+
 def _anchor_last_row(state: SheetState, anchor_letter: str) -> int:
     """anchor 列に値（空でない）がある最終行（1始まり）。無ければ 0。"""
     anchor_col = column_index(anchor_letter)
@@ -361,7 +399,11 @@ def append_rows(
                 fmt["wrapStrategy"] = "WRAP"
             working[row_index][col] = fmt
             intended_formats[(row_index, col)] = fmt
-            if fmt:
+            if target.append_anchor_column:
+                # anchor 経路は既存セルへ直接書くため、意図書式が空でも
+                # 全継承キーをマスクに挙げて残留書式を消す
+                requests.append(_reset_format_request(sheet_id, row_index, col, fmt))
+            elif fmt:
                 requests.append(_format_request(sheet_id, row_index, col, fmt))
 
     intended_heights: dict[int, int] = {}
