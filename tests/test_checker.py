@@ -80,9 +80,11 @@ class TestWrapViolation:
         assert wrap[0].location == "B2"
 
     def test_no_violation_when_wrap_is_set(self, m, make_target):
+        # B の現在幅は設定幅300に一致させる（R4 無条件化後も width
+        # 違反をこのテストの主題にしないためのフィクスチャ中立化）
         state = make_state(
             [["名前", "メモ"], ["abc", "あ" * 20]],
-            column_widths=[100, 100],
+            column_widths=[100, 300],
             row_heights=[38, 58],  # 3 行分の高さも確保済み
             cell_formats=[[{}, {}], [{}, {"wrapStrategy": "WRAP"}]],
         )
@@ -91,9 +93,10 @@ class TestWrapViolation:
         assert violations == []
 
     def test_short_cell_without_wrap_is_fine(self, m, make_target):
+        # B の現在幅は設定幅300に一致させる（同上の中立化）
         state = make_state(
             [["名前", "メモ"], ["abc", "x"]],
-            column_widths=[100, 100],
+            column_widths=[100, 300],
             row_heights=[38, 26],
         )
         gateway = FakeGateway(state)
@@ -206,10 +209,19 @@ class TestFixSheet:
             cell_formats=[[{}, {}], [{}, {"wrapStrategy": "WRAP"}]],
         )
         gateway = FakeGateway(state)
-        fixed = fix_sheet(gateway, wrap_target(make_target), m)
+        # 主題は幅100前提の行高不足（必要58px）。R4 無条件化の width
+        # 違反を主題に持ち込まないよう、設定幅を現在幅100に一致させる
+        # （現在幅を300へ上げると行高の主題自体が消えるため）
+        target = make_target(
+            {
+                "A": ColumnPolicy(mode="fit"),
+                "B": ColumnPolicy(mode="wrap", width_px=100),
+            }
+        )
+        fixed = fix_sheet(gateway, target, m)
         assert "row_height" in kinds(fixed)
         assert gateway.state.row_heights[1] == 58
-        assert check_sheet(gateway, wrap_target(make_target), m) == []
+        assert check_sheet(gateway, target, m) == []
 
     def test_fix_never_touches_values_or_formulas(self, m, make_target):
         values = [

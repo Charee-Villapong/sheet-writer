@@ -44,10 +44,14 @@ def combined_gateway():
 
 
 def combined_target(make_target):
+    # B の設定幅は gateway の現在幅100に一致させる。主題は wrap と
+    # row_height の件数であり、R4 無条件化の width 違反を持ち込まない
+    # ためのフィクスチャ中立化（現在幅を300へ上げると B2 が収まって
+    # wrap 違反自体が消えるため、設定幅側を合わせる）
     return make_target(
         {
             "A": ColumnPolicy(mode="fit"),
-            "B": ColumnPolicy(mode="wrap", width_px=300),
+            "B": ColumnPolicy(mode="wrap", width_px=100),
         }
     )
 
