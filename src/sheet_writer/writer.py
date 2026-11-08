@@ -458,6 +458,22 @@ def _verify(
                             f"セル {column_letter(col)}{row_number} に背景色 "
                             f"{key} が残っている: actual={actual_fmt.get(key)}"
                         )
+            intended_text_format = intended.get("textFormat")
+            if isinstance(intended_text_format, dict):
+                actual_text_format = actual_fmt.get("textFormat")
+                if not isinstance(actual_text_format, dict):
+                    actual_text_format = {}
+                for key in _TEXT_FORMAT_KEYS:
+                    if (
+                        key in intended_text_format
+                        and actual_text_format.get(key) != intended_text_format[key]
+                    ):
+                        problems.append(
+                            f"セル {column_letter(col)}{row_number} の書式 "
+                            f"textFormat.{key} が意図と不一致: "
+                            f"expected={intended_text_format[key]} "
+                            f"actual={actual_text_format.get(key)}"
+                        )
 
     if problems:
         raise VerificationError(" / ".join(problems))
