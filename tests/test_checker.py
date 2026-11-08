@@ -105,7 +105,9 @@ class TestWrapViolation:
 
 class TestRowHeightViolation:
     def test_detected_when_height_insufficient(self, m, make_target):
-        # WRAP 設定済みだが 3 行必要（58px）に対し現在 26px
+        # WRAP 設定済みだが 4 行必要（74px）に対し現在 26px。
+        # 行数の見積もりは 2026-11-09 に広め側へ変更（折り返しセグメントは
+        # 有効幅から全角1文字分を引いて数える）ため、旧値 3行/58px から変更。
         state = make_state(
             [["名前", "メモ"], ["abc", "あ" * 20]],
             column_widths=[100, 100],
@@ -116,7 +118,7 @@ class TestRowHeightViolation:
         violations = check_sheet(gateway, wrap_target(make_target), m)
         heights = [v for v in violations if v.kind == "row_height"]
         assert len(heights) == 1
-        assert heights[0].expected == 58
+        assert heights[0].expected == 74
         assert heights[0].actual == 26
         assert "2" in str(heights[0].location)
         # WRAP は設定済みなので wrap 違反にはならない
@@ -209,7 +211,8 @@ class TestFixSheet:
             cell_formats=[[{}, {}], [{}, {"wrapStrategy": "WRAP"}]],
         )
         gateway = FakeGateway(state)
-        # 主題は幅100前提の行高不足（必要58px）。R4 無条件化の width
+        # 主題は幅100前提の行高不足（必要74px。行数見積もりの広め化
+        # 2026-11-09 により旧値58pxから変更）。R4 無条件化の width
         # 違反を主題に持ち込まないよう、設定幅を現在幅100に一致させる
         # （現在幅を300へ上げると行高の主題自体が消えるため）
         target = make_target(
@@ -220,7 +223,7 @@ class TestFixSheet:
         )
         fixed = fix_sheet(gateway, target, m)
         assert "row_height" in kinds(fixed)
-        assert gateway.state.row_heights[1] == 58
+        assert gateway.state.row_heights[1] == 74
         assert check_sheet(gateway, target, m) == []
 
     def test_fix_never_touches_values_or_formulas(self, m, make_target):

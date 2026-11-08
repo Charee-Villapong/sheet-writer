@@ -123,6 +123,17 @@ class TestCellLines:
         # 1文字増えると 90px > 80px → 2行
         assert cell_lines("あ" * 9, 100, m=custom) == 2
 
+    def test_wrapping_segments_get_a_conservative_estimate(self, m):
+        # 折り返すセグメントは、禁則処理などで境界より早く折れる分を
+        # 見込んで広めに見積もる（規約「見積もりは小さくしない」）。
+        # 13文字 = 149.5px: 素朴な割り算では ceil(149.5/80) = 2行だが、
+        # 有効幅から全角1文字分を引いた 68.5px で割ると 3行になる。
+        # 本表の長文行が見切れた実例（2026-11-09）を受けた変更。
+        assert cell_lines("あ" * 13, 100, m=m) == 3
+        # 1行に収まるセグメントは従来どおり 1 行（fit 列の行高を
+        # 無駄に押し上げない）
+        assert cell_lines("あ" * 6, 100, m=m) == 1
+
     def test_bold_text_wraps_earlier(self, m):
         # 有効幅 80px に対し、通常幅 77.5px は 1 行に収まるが
         # 太字幅 81px は収まらず 2 行になる（太字係数が効く境界ケース）

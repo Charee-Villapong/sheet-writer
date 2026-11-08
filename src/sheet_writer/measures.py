@@ -47,12 +47,24 @@ def needed_width_px(texts: Iterable[str], *, bold: bool = False, m: Measures) ->
 def cell_lines(
     text: str, column_width_px: float, *, bold: bool = False, m: Measures
 ) -> int:
-    """列幅に対してセルが占める行数。空セグメントも1行として数える。"""
+    """列幅に対してセルが占める行数。空セグメントも1行として数える。
+
+    1行に収まるセグメントはそのまま1行。折り返すセグメントは、禁則
+    処理などで境界より早く折れる分を見込み、有効幅から全角1文字分を
+    引いて広めに見積もる（規約「見積もりは小さくしない。迷ったら
+    広めに取る」。素朴な割り算ぴったりの行高では長文行の末尾が
+    見切れた実例を受けた変更: 2026-11-09）。
+    """
     usable = max(column_width_px - m.padding_px, 1)
+    slack = m.bold_fullwidth_px if bold else m.fullwidth_px
+    wrap_usable = max(usable - slack, 1)
     lines = 0
     for segment in text.split("\n"):
         width = text_width_px(segment, bold=bold, m=m)
-        lines += max(1, math.ceil(width / usable))
+        if width <= usable:
+            lines += 1
+        else:
+            lines += max(2, math.ceil(width / wrap_usable))
     return lines
 
 
