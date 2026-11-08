@@ -134,11 +134,7 @@ class TestSparseGrid:
                             {"formattedValue": "数量", "userEnteredFormat": {}},
                         ]
                     },
-                    {
-                        "values": [
-                            {"formattedValue": "abc", "userEnteredFormat": {}}
-                        ]
-                    },
+                    {"values": [{"formattedValue": "abc", "userEnteredFormat": {}}]},
                 ],
                 "rowMetadata": [{"pixelSize": 38}, {"pixelSize": 26}],
                 "columnMetadata": [

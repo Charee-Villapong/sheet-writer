@@ -8,6 +8,7 @@
 """
 
 from fake_gateway import FakeGateway, make_state
+
 from sheet_writer.checker import check_sheet, fix_sheet
 from sheet_writer.config import ColumnPolicy
 
@@ -47,9 +48,7 @@ class TestWrapColumnWidthViolation:
 
     def test_expected_follows_configured_width(self, m, make_target):
         gateway = gateway_with_wrap_width(200)
-        violations = check_sheet(
-            gateway, wrap_target(make_target, width_px=250), m
-        )
+        violations = check_sheet(gateway, wrap_target(make_target, width_px=250), m)
         width = width_violations(violations)
         assert len(width) == 1
         assert width[0].expected == 250

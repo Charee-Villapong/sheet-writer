@@ -8,8 +8,8 @@
 """
 
 import pytest
-
 from fake_gateway import FakeGateway, make_state
+
 from sheet_writer.config import ColumnPolicy
 from sheet_writer.errors import VerificationError
 from sheet_writer.writer import append_rows
@@ -61,9 +61,7 @@ def target(make_target):
 class TestTextFormatVerification:
     def test_text_format_is_inherited_and_verified(self, m, make_target):
         gw = gateway()
-        result = append_rows(
-            gw, target(make_target), [["あいうえお", "短い", "1"]], m
-        )
+        result = append_rows(gw, target(make_target), [["あいうえお", "短い", "1"]], m)
         assert result.appended_rows == [4]
         for cell in gw.state.cell_formats[3]:
             assert cell["textFormat"] == TEXT_FORMAT
@@ -72,6 +70,4 @@ class TestTextFormatVerification:
         # textFormat だけが適用されない状況では、検証で必ず失敗する
         gw = gateway(ignore_text_format=True)
         with pytest.raises(VerificationError):
-            append_rows(
-                gw, target(make_target), [["あいうえお", "短い", "1"]], m
-            )
+            append_rows(gw, target(make_target), [["あいうえお", "短い", "1"]], m)

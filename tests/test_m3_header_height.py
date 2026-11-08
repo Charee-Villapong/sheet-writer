@@ -12,8 +12,8 @@
 """
 
 import pytest
-
 from fake_gateway import FakeGateway, make_state
+
 from sheet_writer.checker import check_sheet, fix_sheet
 from sheet_writer.config import ColumnPolicy
 from sheet_writer.errors import VerificationError
@@ -24,11 +24,7 @@ HEADER_PX = 38
 
 def header_violations(violations):
     """ヘッダー行（1行目）に関する row_height 違反を取り出す。"""
-    return [
-        v
-        for v in violations
-        if v.kind == "row_height" and "1" in str(v.location)
-    ]
+    return [v for v in violations if v.kind == "row_height" and "1" in str(v.location)]
 
 
 # ---------------------------------------------------------------------------
@@ -84,9 +80,7 @@ class TestWriterHeaderHeight:
     @pytest.mark.parametrize("low_height", [20, 30, 37])
     def test_low_header_is_raised_to_38_on_append(self, m, make_target, low_height):
         gateway = writer_gateway(low_height)
-        result = append_rows(
-            gateway, writer_target(make_target), [["ab", "x", "1"]], m
-        )
+        result = append_rows(gateway, writer_target(make_target), [["ab", "x", "1"]], m)
         assert result.appended_rows == [4]
         assert gateway.state.row_heights[0] == HEADER_PX
 

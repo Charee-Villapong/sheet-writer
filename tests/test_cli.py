@@ -7,10 +7,10 @@ FakeGateway に置き換える（実接続は行わない）。
 import json
 
 import pytest
+from fake_gateway import FakeGateway, make_state
 
 import sheet_writer.cli as cli_module
 import sheet_writer.gateway as gateway_module
-from fake_gateway import FakeGateway, make_state
 from sheet_writer.config import ColumnPolicy
 
 TARGET_NAME = "ledger"

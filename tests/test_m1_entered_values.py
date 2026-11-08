@@ -28,8 +28,8 @@ from datetime import date, datetime, time
 from types import SimpleNamespace
 
 import pytest
-
 from fake_gateway import FakeGateway, make_state
+
 from sheet_writer.config import ColumnPolicy
 from sheet_writer.errors import VerificationError
 from sheet_writer.gateway import CliGateway, SheetState
@@ -153,9 +153,7 @@ class TestWriterAcceptsSameValueViaEnteredValue:
             formatted={(APPENDED, 0): "2026/11/15 12:00"},
             entered={
                 (APPENDED, 0): {
-                    "numberValue": serial_of_datetime(
-                        datetime(2026, 11, 15, 12, 0, 0)
-                    )
+                    "numberValue": serial_of_datetime(datetime(2026, 11, 15, 12, 0, 0))
                 }
             },
         )
@@ -171,9 +169,7 @@ class TestWriterAcceptsSameValueViaEnteredValue:
         # 書き込み "13:30" → 表示 "13:30:00"、入力値は時刻の小数シリアル
         gateway = basic_gateway(
             formatted={(APPENDED, 0): "13:30:00"},
-            entered={
-                (APPENDED, 0): {"numberValue": serial_of_time(time(13, 30))}
-            },
+            entered={(APPENDED, 0): {"numberValue": serial_of_time(time(13, 30))}},
         )
         result = append_rows(
             gateway, basic_target(make_target), [["13:30", "x", "1"]], m
@@ -219,9 +215,7 @@ class TestWriterAcceptsSameValueViaEnteredValue:
             formatted={(APPENDED, 0): "ABC"},
             entered={(APPENDED, 0): {"stringValue": "abc"}},
         )
-        result = append_rows(
-            gateway, basic_target(make_target), [["abc", "x", "1"]], m
-        )
+        result = append_rows(gateway, basic_target(make_target), [["abc", "x", "1"]], m)
         assert result.appended_rows == [4]
 
     def test_bool_true_case_insensitive(self, m, make_target):
@@ -249,9 +243,7 @@ class TestWriterAcceptsSameValueViaEnteredValue:
         # 従来どおり: 表示値が書き込み文字列と一致すれば合格
         # （entered_values が空 dict でもよい）
         gateway = basic_gateway()
-        result = append_rows(
-            gateway, basic_target(make_target), [["abc", "x", "1"]], m
-        )
+        result = append_rows(gateway, basic_target(make_target), [["abc", "x", "1"]], m)
         assert result.appended_rows == [4]
 
 
@@ -264,9 +256,7 @@ class TestWriterRejectsDifferentEnteredValue:
             entered={(APPENDED, 2): {"numberValue": 12346}},
         )
         with pytest.raises(VerificationError):
-            append_rows(
-                gateway, basic_target(make_target), [["abc", "x", "12345"]], m
-            )
+            append_rows(gateway, basic_target(make_target), [["abc", "x", "12345"]], m)
 
     def test_different_date_serial(self, m, make_target):
         # 1日ずれた日付シリアルは別の値
@@ -297,9 +287,7 @@ class TestWriterRejectsDifferentEnteredValue:
             entered={(APPENDED, 0): {"stringValue": "abd"}},
         )
         with pytest.raises(VerificationError):
-            append_rows(
-                gateway, basic_target(make_target), [["abc", "x", "1"]], m
-            )
+            append_rows(gateway, basic_target(make_target), [["abc", "x", "1"]], m)
 
     def test_different_bool_value(self, m, make_target):
         gateway = basic_gateway(
@@ -307,9 +295,7 @@ class TestWriterRejectsDifferentEnteredValue:
             entered={(APPENDED, 0): {"boolValue": False}},
         )
         with pytest.raises(VerificationError):
-            append_rows(
-                gateway, basic_target(make_target), [["TRUE", "x", "1"]], m
-            )
+            append_rows(gateway, basic_target(make_target), [["TRUE", "x", "1"]], m)
 
     def test_empty_cell_is_rejected(self, m, make_target):
         # セル自体が落ちている（表示値も入力値も空）場合は従来どおり失敗
@@ -354,9 +340,8 @@ def grid_payload(cells):
                 "data": [
                     {
                         "rowData": row_data,
-                        "rowMetadata": [{"pixelSize": 38}] + [{"pixelSize": 26}] * (
-                            len(cells) - 1
-                        ),
+                        "rowMetadata": [{"pixelSize": 38}]
+                        + [{"pixelSize": 26}] * (len(cells) - 1),
                         "columnMetadata": [
                             {"pixelSize": 100} for _ in range(len(cells[0]))
                         ],

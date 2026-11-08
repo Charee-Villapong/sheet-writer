@@ -41,8 +41,7 @@ def sheet_block(sheet_id, title, rows):
                 "rowData": [
                     {
                         "values": [
-                            {"formattedValue": v, "userEnteredFormat": {}}
-                            for v in row
+                            {"formattedValue": v, "userEnteredFormat": {}} for v in row
                         ]
                     }
                     for row in rows

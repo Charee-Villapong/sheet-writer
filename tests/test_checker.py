@@ -11,6 +11,7 @@
 import copy
 
 from fake_gateway import FakeGateway, make_state
+
 from sheet_writer.checker import check_sheet, fix_sheet
 from sheet_writer.config import ColumnPolicy
 

@@ -11,8 +11,8 @@
 """
 
 import pytest
-
 from fake_gateway import FakeGateway, make_state
+
 from sheet_writer.config import ColumnPolicy
 from sheet_writer.errors import VerificationError
 from sheet_writer.writer import append_rows

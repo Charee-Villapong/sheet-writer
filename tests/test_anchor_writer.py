@@ -27,6 +27,7 @@ FakeGateway の append は実 API のテーブル検出を模す（範囲の列�
 """
 
 from fake_gateway import FakeGateway, make_state
+
 from sheet_writer.config import ColumnPolicy, Target
 from sheet_writer.writer import append_rows
 

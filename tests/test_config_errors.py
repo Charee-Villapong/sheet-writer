@@ -102,13 +102,9 @@ class TestCliConfigErrorExitCode:
             {"targets": {"t": valid_target(columns={"A": "fit"})}},
         ],
     )
-    def test_config_error_exits_2_without_traceback(
-        self, tmp_path, capsys, payload
-    ):
+    def test_config_error_exits_2_without_traceback(self, tmp_path, capsys, payload):
         path = write_config(tmp_path, payload)
-        rc = cli_module.main(
-            ["check", "--config", str(path), "--target", "t"]
-        )
+        rc = cli_module.main(["check", "--config", str(path), "--target", "t"])
         assert rc == 2
         captured = capsys.readouterr()
         combined = captured.out + captured.err

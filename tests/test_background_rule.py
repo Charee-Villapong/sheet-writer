@@ -21,8 +21,8 @@ writer（append_rows）:
 """
 
 import pytest
-
 from fake_gateway import DUMMY_SHEET_ID, FakeGateway, make_state
+
 from sheet_writer.checker import check_sheet, fix_sheet
 from sheet_writer.config import ColumnPolicy, Target
 from sheet_writer.errors import VerificationError
@@ -278,19 +278,13 @@ class TestFakeFieldMaskSemantics:
                 [{}, {}],
             ]
         )
-        gateway.batch_update(
-            "dummy-spreadsheet-id-0001", [clearing_request(1, 0)]
-        )
-        assert gateway.state.cell_formats[1][0] == {
-            "horizontalAlignment": "CENTER"
-        }
+        gateway.batch_update("dummy-spreadsheet-id-0001", [clearing_request(1, 0)])
+        assert gateway.state.cell_formats[1][0] == {"horizontalAlignment": "CENTER"}
 
     def test_background_present_in_cell_is_applied_not_deleted(self):
         gateway = clean_gateway_with_formats([[{}, {}], [{}, {}], [{}, {}]])
         request = clearing_request(1, 0)
-        request["repeatCell"]["cell"] = {
-            "userEnteredFormat": {"backgroundColor": PALE}
-        }
+        request["repeatCell"]["cell"] = {"userEnteredFormat": {"backgroundColor": PALE}}
         gateway.batch_update("dummy-spreadsheet-id-0001", [request])
         assert gateway.state.cell_formats[1][0]["backgroundColor"] == PALE
 
@@ -344,9 +338,7 @@ def writer_target(background_rule):
 class TestWriterBackgroundRule:
     def test_appended_row_has_no_background_when_rule_on(self, m):
         gateway = writer_gateway()
-        append_rows(
-            gateway, writer_target(True), [["あいうえお", "短い", "1"]], m
-        )
+        append_rows(gateway, writer_target(True), [["あいうえお", "短い", "1"]], m)
         for cell in gateway.state.cell_formats[3]:
             assert "backgroundColor" not in cell
             assert "backgroundColorStyle" not in cell
@@ -390,22 +382,16 @@ class TestWriterBackgroundRule:
 
     def test_appended_row_keeps_background_when_rule_off(self, m):
         gateway = writer_gateway()
-        append_rows(
-            gateway, writer_target(False), [["あいうえお", "短い", "1"]], m
-        )
+        append_rows(gateway, writer_target(False), [["あいうえお", "短い", "1"]], m)
         for cell in gateway.state.cell_formats[3]:
             assert cell["backgroundColor"] == WHITE
 
-    def test_background_stuck_on_appended_row_raises_verification_error(
-        self, m
-    ):
+    def test_background_stuck_on_appended_row_raises_verification_error(self, m):
         # append の書式継承で背景が付いてしまい、除去も効かない状況では
         # 黙って成功せず VerificationError になる
         gateway = writer_gateway(keep_appended_background=True)
         with pytest.raises(VerificationError):
-            append_rows(
-                gateway, writer_target(True), [["あいうえお", "短い", "1"]], m
-            )
+            append_rows(gateway, writer_target(True), [["あいうえお", "短い", "1"]], m)
 
     def test_stuck_background_is_accepted_when_rule_off(self, m):
         gateway = writer_gateway(keep_appended_background=True)
