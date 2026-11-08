@@ -8,8 +8,10 @@
 from __future__ import annotations
 
 import copy
+import math
 import re
 from dataclasses import dataclass
+from datetime import date, datetime
 
 from sheet_writer import measures as mz
 from sheet_writer.config import ColumnPolicy, Measures, Target
@@ -33,6 +35,85 @@ _VERIFY_FORMAT_KEYS = (
     "numberFormat",
     "wrapStrategy",
 )
+
+# Sheets のシリアル値の起点（1899-12-30）
+_SERIAL_EPOCH = date(1899, 12, 30)
+_DATETIME_FORMATS = (
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%d %H:%M",
+    "%Y/%m/%d %H:%M:%S",
+    "%Y/%m/%d %H:%M",
+    "%Y-%m-%dT%H:%M:%S",
+    "%Y-%m-%dT%H:%M",
+)
+_DATE_FORMATS = ("%Y-%m-%d", "%Y/%m/%d")
+_TIME_FORMATS = ("%H:%M:%S", "%H:%M")
+
+
+def _serial_value(text: str) -> float | None:
+    """日付・日時・時刻文字列を Sheets のシリアル値へ変換する。"""
+    for fmt in _DATETIME_FORMATS:
+        try:
+            parsed_dt = datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+        seconds = parsed_dt.hour * 3600 + parsed_dt.minute * 60 + parsed_dt.second
+        return (parsed_dt.date() - _SERIAL_EPOCH).days + seconds / 86400
+    for fmt in _DATE_FORMATS:
+        try:
+            parsed_dt = datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+        return float((parsed_dt.date() - _SERIAL_EPOCH).days)
+    for fmt in _TIME_FORMATS:
+        try:
+            parsed_dt = datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+        seconds = parsed_dt.hour * 3600 + parsed_dt.minute * 60 + parsed_dt.second
+        return seconds / 86400
+    return None
+
+
+def _number_value_matches(expected: str, number_value: object) -> bool:
+    try:
+        actual_number = float(number_value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+    try:
+        expected_number = float(expected.replace(",", ""))
+    except ValueError:
+        expected_number = None
+    if expected_number is not None:
+        return math.isclose(expected_number, actual_number, rel_tol=1e-9, abs_tol=1e-9)
+    serial = _serial_value(expected)
+    if serial is not None:
+        return math.isclose(serial, actual_number, rel_tol=0.0, abs_tol=1e-7)
+    return False
+
+
+def _entered_value_matches(expected: str, entered: dict) -> bool:
+    """userEnteredValue が書き込み文字列と同じ値を表すかを判定する。"""
+    if not entered:
+        return False
+    if "formulaValue" in entered:
+        return entered["formulaValue"] == expected
+    if "stringValue" in entered:
+        return entered["stringValue"] == expected
+    if "boolValue" in entered:
+        bool_text = "TRUE" if entered["boolValue"] else "FALSE"
+        return expected.upper() == bool_text
+    if "numberValue" in entered:
+        return _number_value_matches(expected, entered["numberValue"])
+    return False
+
+
+def _entered_at(state: SheetState, row: int, col: int) -> dict:
+    entered_values = getattr(state, "entered_values", None) or []
+    if row < len(entered_values) and col < len(entered_values[row]):
+        cell = entered_values[row][col]
+        return cell if isinstance(cell, dict) else {}
+    return {}
 
 
 def column_letter(index0: int) -> str:
@@ -295,7 +376,12 @@ def _verify(
             actual_values[c] if c < len(actual_values) else "" for c in range(n_cols)
         ]
         expected = [row[c] if c < len(row) else "" for c in range(n_cols)]
-        if padded != expected:
+        values_match = all(
+            padded[c] == expected[c]
+            or _entered_value_matches(expected[c], _entered_at(after, row_index, c))
+            for c in range(n_cols)
+        )
+        if not values_match:
             problems.append(
                 f"行 {row_number} の値が意図と不一致: "
                 f"expected={expected} actual={padded}"

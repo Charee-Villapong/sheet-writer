@@ -28,6 +28,23 @@ def column_letter(index0):
     return letter
 
 
+def _entered_for(value):
+    """実 API に倣った userEnteredValue の合成。"""
+    if value == "":
+        return {}
+    if isinstance(value, str) and value.startswith("="):
+        return {"formulaValue": value}
+    return {"stringValue": value}
+
+
+def _entered_for_row(row):
+    return [_entered_for(value) for value in row]
+
+
+def _synth_entered(values):
+    return [_entered_for_row(row) for row in values]
+
+
 def make_state(values, column_widths=None, row_heights=None, cell_formats=None):
     """values を中心に、寸法・書式の既定値を補った SheetState を作る。"""
     n_cols = max((len(row) for row in values), default=0)
@@ -52,6 +69,7 @@ def make_state(values, column_widths=None, row_heights=None, cell_formats=None):
             list(row_heights) if row_heights is not None else [26] * len(padded_values)
         ),
         cell_formats=formats,
+        entered_values=_synth_entered(padded_values),
     )
 
 
@@ -76,6 +94,8 @@ class FakeGateway:
         drop_appended_values=False,
     ):
         self._state = copy.deepcopy(state)
+        if not getattr(self._state, "entered_values", None):
+            self._state.entered_values = _synth_entered(self._state.values)
         self.ignore_column_widths = ignore_column_widths
         self.ignore_repeat_cell = ignore_repeat_cell
         self.drop_appended_values = drop_appended_values
@@ -106,6 +126,12 @@ class FakeGateway:
                 row.extend([""] * (n_cols - len(row)))
             for fmt_row in self._state.cell_formats:
                 fmt_row.extend({} for _ in range(n_cols - len(fmt_row)))
+            if not getattr(self._state, "entered_values", None):
+                self._state.entered_values = _synth_entered(self._state.values)
+            for entered_row in self._state.entered_values:
+                entered_row.extend({} for _ in range(n_cols - len(entered_row)))
+            while len(self._state.entered_values) < len(self._state.values):
+                self._state.entered_values.append([{} for _ in range(n_cols)])
             while len(self._state.column_widths) < n_cols:
                 self._state.column_widths.append(None)
             for row in values:
@@ -113,6 +139,7 @@ class FakeGateway:
                 self._state.values.append(padded)
                 self._state.cell_formats.append([{} for _ in range(n_cols)])
                 self._state.row_heights.append(None)
+                self._state.entered_values.append(_entered_for_row(padded))
         tab = range_a1.split("!")[0] if "!" in range_a1 else "Sheet1"
         last_col = column_letter(max((len(r) for r in values), default=1) - 1)
         return f"{tab}!A{start_row}:{last_col}{end_row}"
