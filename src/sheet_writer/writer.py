@@ -174,7 +174,14 @@ def compute_column_widths(
     """最終列幅を求める。ヘッダーは太字で計測し、現在より縮めることはしない。"""
     widths: dict[str, int] = {}
     header = state.values[0] if state.values else []
-    data_rows = list(state.values[1:]) + [list(row) for row in new_rows]
+    existing_rows = state.values[1:]
+    if target.append_anchor_column:
+        # anchor 設定時は checker の検査範囲に揃え、anchor 最終行
+        # （1始まり・ヘッダー含む）までのデータ行だけを対象にする
+        existing_rows = existing_rows[
+            : max(_anchor_last_row(state, target.append_anchor_column) - 1, 0)
+        ]
+    data_rows = list(existing_rows) + [list(row) for row in new_rows]
     for col in range(n_cols):
         letter = column_letter(col)
         policy = _policy_for(target, letter)
