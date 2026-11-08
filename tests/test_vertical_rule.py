@@ -112,6 +112,18 @@ class TestCheckerDetectsVerticalAlignment:
         gateway = clean_gateway(formats)
         assert check_sheet(gateway, va_target(vertical_alignment=None), m) == []
 
+    def test_grid_columns_beyond_data_and_config_are_out_of_scope(self, m):
+        # グリッド幅（column_widths）がデータ幅・設定列より広くても、
+        # データも設定もない列の空セルは違反にしない
+        state = make_state(
+            VALUES,
+            column_widths=[100, 300, 100, 100, 100],
+            row_heights=[38, 26, 26],
+            cell_formats=all_top(3),
+        )
+        gateway = FakeGateway(state)
+        assert check_sheet(gateway, va_target(), m) == []
+
     def test_anchor_scope_excludes_rows_below_anchor(self, m):
         values = VALUES + [["ghi", ""]]
         formats = all_top(4)

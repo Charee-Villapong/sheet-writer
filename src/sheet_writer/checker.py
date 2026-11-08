@@ -308,8 +308,18 @@ def check_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Vio
                 )
 
     if target.vertical_alignment is not None:
+        # 列の範囲は「設定で宣言された列」と「検査行内にデータのある
+        # 列」の和集合。グリッドの残り列（データも設定もない列）は
+        # 対象外 — 空セルの既定値まで違反にすると、グリッド全体が
+        # 違反だらけになる（実 gateway は values をグリッド幅に
+        # 埋めて返すため、行の長さでは判定できない）
+        va_cols = {column_index(letter) for letter in target.columns}
         for row in range(0, n_rows):
-            for col in range(n_cols):
+            for col in range(_n_cols(state)):
+                if _cell(state, row, col) != "":
+                    va_cols.add(col)
+        for row in range(0, n_rows):
+            for col in sorted(va_cols):
                 actual_alignment = _format(state, row, col).get("verticalAlignment")
                 if actual_alignment == target.vertical_alignment:
                     continue
