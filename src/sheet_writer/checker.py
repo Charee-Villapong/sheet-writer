@@ -135,6 +135,8 @@ def check_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Vio
                 )
 
     for row in range(1, len(state.values)):
+        if not any(_cell(state, row, col) != "" for col in range(n_cols)):
+            continue  # 内容のない行は見切れの対象外（グリッドの残り行など）
         lines = max(
             (_display_lines(state, row, col, m) for col in range(n_cols)),
             default=1,

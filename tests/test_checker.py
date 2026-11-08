@@ -134,6 +134,17 @@ class TestRowHeightViolation:
 
 
 class TestCleanSheet:
+    def test_empty_rows_are_not_flagged_for_height(self, m, make_target):
+        # 内容のない行は、既定行高（21px）のままでも行高不足にしない。
+        # 実地確認で判明した誤検出への対策（実装側で追加したテスト）。
+        state = make_state(
+            [["名前", "メモ"], ["abc", "x"], ["", ""], ["", ""]],
+            column_widths=[100, 300],
+            row_heights=[38, 26, 21, 21],
+        )
+        gateway = FakeGateway(state)
+        assert check_sheet(gateway, wrap_target(make_target), m) == []
+
     def test_no_violations(self, m, make_target):
         state = make_state(
             [["名前", "メモ"], ["abc", "x"]],
