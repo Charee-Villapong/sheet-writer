@@ -1,9 +1,11 @@
 """検査役: 既存シートの見切れ違反を検出し、書式のみを自動修正する。
 
-検出する違反は3種:
+検出する違反は4種:
 - ``width``: fit 列で必要幅 > 現在幅
 - ``wrap``: 内容が列幅に収まらないのに WRAP が未設定
 - ``row_height``: 推定必要行高 > 現在の行高
+- ``background``: ``background_rule`` 有効時、データ行のセルに背景色が
+  設定されている（ヘッダー行は対象外、白の明示設定も違反）
 
 ``fix_sheet`` は書式（列幅の拡大・WRAP 設定・行高の拡大）のみを直す。
 値・数式には絶対に触らない。
@@ -26,6 +28,34 @@ from sheet_writer.writer import (
 
 _DEFAULT_WIDTH_PX = 100
 _DEFAULT_HEIGHT_PX = 21
+
+# 背景色とみなす userEnteredFormat のキー
+_BACKGROUND_KEYS = ("backgroundColor", "backgroundColorStyle")
+
+
+def _clear_background_request(sheet_id: int, row: int, col: int) -> dict:
+    """背景色の除去リクエスト。
+
+    フィールドマスクに両キーを挙げ、cell には含めないことで、実 API の
+    「マスクにあって cell に無いフィールドは削除される」意味論で除去する。
+    他の書式キーには触らない。
+    """
+    return {
+        "repeatCell": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": row,
+                "endRowIndex": row + 1,
+                "startColumnIndex": col,
+                "endColumnIndex": col + 1,
+            },
+            "cell": {"userEnteredFormat": {}},
+            "fields": (
+                "userEnteredFormat.backgroundColor,"
+                "userEnteredFormat.backgroundColorStyle"
+            ),
+        }
+    }
 
 
 @dataclass
@@ -150,6 +180,27 @@ def check_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Vio
                     )
                 )
 
+    if target.background_rule:
+        for row in range(1, len(state.values)):
+            for col in range(n_cols):
+                fmt = _format(state, row, col)
+                found = next((key for key in _BACKGROUND_KEYS if key in fmt), None)
+                if found is None:
+                    continue
+                letter = column_letter(col)
+                violations.append(
+                    Violation(
+                        kind="background",
+                        location=f"{letter}{row + 1}",
+                        expected="未設定",
+                        actual=fmt[found],
+                        detail=(
+                            f"セル {letter}{row + 1} に背景色（{found}）が"
+                            "設定されている"
+                        ),
+                    )
+                )
+
     for row in range(1, len(state.values)):
         if not any(_cell(state, row, col) != "" for col in range(n_cols)):
             continue  # 内容のない行は見切れの対象外（グリッドの残り行など）
@@ -214,6 +265,12 @@ def fix_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Viola
             requests.append(
                 _format_request(sheet_id, row, col, {"wrapStrategy": "WRAP"})
             )
+        elif violation.kind == "background":
+            letter = "".join(ch for ch in str(violation.location) if ch.isalpha())
+            number = "".join(ch for ch in str(violation.location) if ch.isdigit())
+            col = column_index(letter)
+            row = int(number) - 1
+            requests.append(_clear_background_request(sheet_id, row, col))
 
     if requests:
         gateway.batch_update(target.spreadsheet_id, requests)
