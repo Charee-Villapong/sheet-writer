@@ -42,6 +42,12 @@ class SheetsGateway(Protocol):
         """行を追加し、updatedRange を返す。"""
         ...
 
+    def update_values(
+        self, spreadsheet_id: str, range_a1: str, values: list[list[str]]
+    ) -> str:
+        """指定範囲へ値を直接書き込み、updatedRange を返す。"""
+        ...
+
     def get_state(self, spreadsheet_id: str, tab: str) -> SheetState: ...
 
     def batch_update(self, spreadsheet_id: str, requests: list[dict]) -> None: ...
@@ -95,6 +101,20 @@ class CliGateway:
         )
         updates = payload.get("updates", {})
         return str(updates.get("updatedRange", ""))
+
+    def update_values(
+        self, spreadsheet_id: str, range_a1: str, values: list[list[str]]
+    ) -> str:
+        payload = self._call(
+            ["spreadsheets", "values", "update"],
+            params={
+                "spreadsheetId": spreadsheet_id,
+                "range": range_a1,
+                "valueInputOption": "USER_ENTERED",
+            },
+            body={"values": values},
+        )
+        return str(payload.get("updatedRange", ""))
 
     def batch_update(self, spreadsheet_id: str, requests: list[dict]) -> None:
         self._call(
