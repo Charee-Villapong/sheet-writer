@@ -110,8 +110,9 @@ class TestLoadConfig:
         assert config.measures == Measures()
 
     def test_measures_partial_override_keeps_other_defaults(self, tmp_path):
-        path = write_config(tmp_path, {"measures": {"fullwidth_px": 10.0},
-                                       "targets": {}})
+        path = write_config(
+            tmp_path, {"measures": {"fullwidth_px": 10.0}, "targets": {}}
+        )
         config = load_config(path)
         assert config.measures.fullwidth_px == 10.0
         assert config.measures.halfwidth_px == 6.3

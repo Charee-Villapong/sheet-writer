@@ -90,9 +90,7 @@ def compute_column_widths(
             widths[letter] = max(current, policy_width)
         else:
             header_text = header[col] if col < len(header) else ""
-            data_texts = [
-                row[col] if col < len(row) else "" for row in data_rows
-            ]
+            data_texts = [row[col] if col < len(row) else "" for row in data_rows]
             needed = max(
                 mz.needed_width_px([header_text], bold=True, m=m),
                 mz.needed_width_px(data_texts, m=m),
@@ -145,9 +143,7 @@ def _dimension_request(
     }
 
 
-def _format_request(
-    sheet_id: int, row: int, col: int, fmt: dict
-) -> dict:
+def _format_request(sheet_id: int, row: int, col: int, fmt: dict) -> dict:
     fields = "userEnteredFormat(" + ",".join(fmt.keys()) + ")"
     return {
         "repeatCell": {

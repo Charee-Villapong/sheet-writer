@@ -28,9 +28,7 @@ def text_width_px(text: str, *, bold: bool = False, m: Measures) -> float:
     return sum(_char_width(ch, bold=bold, m=m) for ch in text)
 
 
-def needed_width_px(
-    texts: Iterable[str], *, bold: bool = False, m: Measures
-) -> int:
+def needed_width_px(texts: Iterable[str], *, bold: bool = False, m: Measures) -> int:
     """テキスト群を1行ずつ収めるのに必要な列幅（px、切り上げ）。
 
     各テキストは ``\\n`` でセグメントに割り、最大セグメント幅 + 余白で見積もる。

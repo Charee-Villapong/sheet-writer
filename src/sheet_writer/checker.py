@@ -62,9 +62,7 @@ def _format(state: SheetState, row: int, col: int) -> dict:
 
 
 def _n_cols(state: SheetState) -> int:
-    return max(
-        [len(row) for row in state.values] + [len(state.column_widths)] + [0]
-    )
+    return max([len(row) for row in state.values] + [len(state.column_widths)] + [0])
 
 
 def _display_lines(state: SheetState, row: int, col: int, m: Measures) -> int:
@@ -82,14 +80,10 @@ def _segment_overflows(state: SheetState, row: int, col: int, m: Measures) -> bo
     if text == "":
         return False
     usable = max(_width(state, col) - m.padding_px, 1)
-    return any(
-        mz.text_width_px(segment, m=m) > usable for segment in text.split("\n")
-    )
+    return any(mz.text_width_px(segment, m=m) > usable for segment in text.split("\n"))
 
 
-def check_sheet(
-    gateway: SheetsGateway, target: Target, m: Measures
-) -> list[Violation]:
+def check_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Violation]:
     """違反を検出する。読み取りのみで、状態は一切変更しない。"""
     state = gateway.get_state(target.spreadsheet_id, target.tab)
     n_cols = _n_cols(state)
@@ -164,9 +158,7 @@ def check_sheet(
     return violations
 
 
-def fix_sheet(
-    gateway: SheetsGateway, target: Target, m: Measures
-) -> list[Violation]:
+def fix_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Violation]:
     """違反を書式のみで修正し、修正した違反を返す。値・数式には触らない。"""
     violations = check_sheet(gateway, target, m)
     if not violations:
@@ -182,7 +174,9 @@ def fix_sheet(
             col = column_index(str(violation.location))
             if col not in grown_columns:
                 requests.append(
-                    _dimension_request(sheet_id, "COLUMNS", col, int(violation.expected))
+                    _dimension_request(
+                        sheet_id, "COLUMNS", col, int(violation.expected)
+                    )
                 )
                 grown_columns.add(col)
         elif violation.kind == "wrap":
@@ -197,9 +191,7 @@ def fix_sheet(
                     policy.width_px or m.default_wrap_width_px,
                 )
                 if final > _width(state, col):
-                    requests.append(
-                        _dimension_request(sheet_id, "COLUMNS", col, final)
-                    )
+                    requests.append(_dimension_request(sheet_id, "COLUMNS", col, final))
                 grown_columns.add(col)
             requests.append(
                 _format_request(sheet_id, row, col, {"wrapStrategy": "WRAP"})

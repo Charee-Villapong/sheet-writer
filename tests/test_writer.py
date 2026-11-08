@@ -197,9 +197,7 @@ class TestWidthCalculationSources:
             if body and body["range"]["dimension"] == "COLUMNS":
                 assert body["properties"]["pixelSize"] >= 100
 
-    def test_wrap_column_uses_default_width_when_policy_has_none(
-        self, m, make_target
-    ):
+    def test_wrap_column_uses_default_width_when_policy_has_none(self, m, make_target):
         state = make_state(
             [["見出し", "メモ"], ["x", "y"]],
             column_widths=[100, 100],

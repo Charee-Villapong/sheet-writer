@@ -33,8 +33,7 @@ class SheetState:
 
 
 class SheetsGateway(Protocol):
-    def get_values(self, spreadsheet_id: str, range_a1: str) -> list[list[str]]:
-        ...
+    def get_values(self, spreadsheet_id: str, range_a1: str) -> list[list[str]]: ...
 
     def append_values(
         self, spreadsheet_id: str, range_a1: str, values: list[list[str]]
@@ -42,11 +41,9 @@ class SheetsGateway(Protocol):
         """行を追加し、updatedRange を返す。"""
         ...
 
-    def get_state(self, spreadsheet_id: str, tab: str) -> SheetState:
-        ...
+    def get_state(self, spreadsheet_id: str, tab: str) -> SheetState: ...
 
-    def batch_update(self, spreadsheet_id: str, requests: list[dict]) -> None:
-        ...
+    def batch_update(self, spreadsheet_id: str, requests: list[dict]) -> None: ...
 
 
 class CliGateway:

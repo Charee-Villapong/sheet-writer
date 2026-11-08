@@ -36,9 +36,7 @@ def wrap_target(make_target):
 
 
 def fit_target(make_target):
-    return make_target(
-        {"A": ColumnPolicy(mode="fit"), "B": ColumnPolicy(mode="fit")}
-    )
+    return make_target({"A": ColumnPolicy(mode="fit"), "B": ColumnPolicy(mode="fit")})
 
 
 class TestWidthViolation:
@@ -230,9 +228,7 @@ class TestFixSheet:
         for req in gateway.batch_requests:
             assert set(req.keys()) <= {"updateDimensionProperties", "repeatCell"}
 
-    def test_fix_clean_sheet_returns_empty_and_changes_nothing(
-        self, m, make_target
-    ):
+    def test_fix_clean_sheet_returns_empty_and_changes_nothing(self, m, make_target):
         state = make_state(
             [["名前", "メモ"], ["abc", "x"]],
             column_widths=[100, 300],

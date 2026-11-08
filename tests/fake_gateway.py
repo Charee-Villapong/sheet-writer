@@ -36,8 +36,10 @@ def make_state(values, column_widths=None, row_heights=None, cell_formats=None):
         formats = [[{} for _ in range(n_cols)] for _ in padded_values]
     else:
         formats = [
-            [copy.deepcopy(cell_formats[r][c]) if c < len(cell_formats[r]) else {}
-             for c in range(n_cols)]
+            [
+                copy.deepcopy(cell_formats[r][c]) if c < len(cell_formats[r]) else {}
+                for c in range(n_cols)
+            ]
             for r in range(len(padded_values))
         ]
     return SheetState(
@@ -47,9 +49,7 @@ def make_state(values, column_widths=None, row_heights=None, cell_formats=None):
             list(column_widths) if column_widths is not None else [100] * n_cols
         ),
         row_heights=(
-            list(row_heights)
-            if row_heights is not None
-            else [26] * len(padded_values)
+            list(row_heights) if row_heights is not None else [26] * len(padded_values)
         ),
         cell_formats=formats,
     )
