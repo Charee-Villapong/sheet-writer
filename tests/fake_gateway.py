@@ -1,8 +1,8 @@
 """writer / checker のテスト用インメモリ FakeGateway。
 
 SheetsGateway プロトコルと同じ4メソッドを持ち、`batch_update` の
-リクエスト（updateDimensionProperties / repeatCell）を解釈して
-保持している SheetState を実際に書き換える。これにより writer の
+リクエスト（updateDimensionProperties / repeatCell / setDataValidation）
+を解釈して保持している SheetState を実際に書き換える。これにより writer の
 「書き込み後に読み戻して検証する」振る舞いまで含めて検証できる。
 
 検証失敗系のテストのために、変更の一部を無視するモードを持つ:
@@ -78,8 +78,11 @@ def _synth_entered(values):
     return [_entered_for_row(row) for row in values]
 
 
-def make_state(values, column_widths=None, row_heights=None, cell_formats=None):
-    """values を中心に、寸法・書式の既定値を補った SheetState を作る。"""
+def make_state(
+    values, column_widths=None, row_heights=None, cell_formats=None,
+    data_validations=None,
+):
+    """values を中心に、寸法・書式・入力規則の既定値を補った SheetState を作る。"""
     n_cols = max((len(row) for row in values), default=0)
     padded_values = [list(row) + [""] * (n_cols - len(row)) for row in values]
     if cell_formats is None:
@@ -88,6 +91,18 @@ def make_state(values, column_widths=None, row_heights=None, cell_formats=None):
         formats = [
             [
                 copy.deepcopy(cell_formats[r][c]) if c < len(cell_formats[r]) else {}
+                for c in range(n_cols)
+            ]
+            for r in range(len(padded_values))
+        ]
+    if data_validations is None:
+        validations = [[{} for _ in range(n_cols)] for _ in padded_values]
+    else:
+        validations = [
+            [
+                copy.deepcopy(data_validations[r][c])
+                if c < len(data_validations[r])
+                else {}
                 for c in range(n_cols)
             ]
             for r in range(len(padded_values))
@@ -103,6 +118,7 @@ def make_state(values, column_widths=None, row_heights=None, cell_formats=None):
         ),
         cell_formats=formats,
         entered_values=_synth_entered(padded_values),
+        data_validations=validations,
     )
 
 
@@ -153,6 +169,10 @@ class FakeGateway:
         self._state = copy.deepcopy(state)
         if not getattr(self._state, "entered_values", None):
             self._state.entered_values = _synth_entered(self._state.values)
+        if not getattr(self._state, "data_validations", None):
+            self._state.data_validations = [
+                [{} for _ in range(len(row))] for row in self._state.values
+            ]
         self.ignore_column_widths = ignore_column_widths
         self.ignore_repeat_cell = ignore_repeat_cell
         self.drop_appended_values = drop_appended_values
@@ -168,6 +188,17 @@ class FakeGateway:
     @property
     def state(self):
         return copy.deepcopy(self._state)
+
+    def _sync_validations(self):
+        """data_validations グリッドを values の形に揃える（不足は {} で補う）。"""
+        grid = getattr(self._state, "data_validations", None)
+        if not grid:
+            grid = self._state.data_validations = []
+        n_cols = max((len(row) for row in self._state.values), default=0)
+        for row in grid:
+            row.extend({} for _ in range(n_cols - len(row)))
+        while len(grid) < len(self._state.values):
+            grid.append([{} for _ in range(n_cols)])
 
     # -- SheetsGateway プロトコル --------------------------------------
     def get_values(self, spreadsheet_id, range_a1):
@@ -235,6 +266,7 @@ class FakeGateway:
                 entered_row.extend({} for _ in range(n_cols - len(entered_row)))
             while len(self._state.entered_values) < len(self._state.values):
                 self._state.entered_values.append([{} for _ in range(n_cols)])
+            self._sync_validations()
             while len(self._state.column_widths) < n_cols:
                 self._state.column_widths.append(None)
             new_value_rows = []
@@ -262,10 +294,14 @@ class FakeGateway:
                 self._state.cell_formats.append([{} for _ in range(n_cols)])
                 self._state.row_heights.append(None)
                 self._state.entered_values.append([{} for _ in range(n_cols)])
+                self._state.data_validations.append([{} for _ in range(n_cols)])
             self._state.values[insert_at:insert_at] = new_value_rows
             self._state.cell_formats[insert_at:insert_at] = new_format_rows
             self._state.row_heights[insert_at:insert_at] = [None] * len(values)
             self._state.entered_values[insert_at:insert_at] = new_entered_rows
+            self._state.data_validations[insert_at:insert_at] = [
+                [{} for _ in range(n_cols)] for _ in values
+            ]
         tab = range_a1.split("!")[0] if "!" in range_a1 else "Sheet1"
         last_col = column_letter(max((len(r) for r in values), default=1) - 1)
         return f"{tab}!A{start_row}:{last_col}{end_row}"
@@ -295,6 +331,7 @@ class FakeGateway:
             self._state.cell_formats.append([{} for _ in range(n_cols)])
             self._state.row_heights.append(None)
             self._state.entered_values.append([{} for _ in range(n_cols)])
+        self._sync_validations()
         for row in self._state.values:
             row.extend([""] * (n_cols - len(row)))
         for fmt_row in self._state.cell_formats:
@@ -324,6 +361,8 @@ class FakeGateway:
                 self._apply_dimension(request["updateDimensionProperties"])
             elif "repeatCell" in request:
                 self._apply_repeat_cell(request["repeatCell"])
+            elif "setDataValidation" in request:
+                self._apply_set_data_validation(request["setDataValidation"])
 
     # -- リクエスト解釈 --------------------------------------------------
     def _apply_dimension(self, body):
@@ -345,6 +384,28 @@ class FakeGateway:
             target.append(None)
         for idx in range(start, end):
             target[idx] = pixel_size
+
+    def _apply_set_data_validation(self, body):
+        """setDataValidation の模倣: 範囲内のセルの入力規則を rule で置き換える。
+
+        rule が無い（キー自体が無い）場合は入力規則の削除として扱う。
+        値・書式には触らない。
+        """
+        self._sync_validations()
+        rng = body.get("range", {})
+        rule = body.get("rule")
+        row_start = rng.get("startRowIndex", 0)
+        row_end = rng.get("endRowIndex", row_start + 1)
+        col_start = rng.get("startColumnIndex", 0)
+        col_end = rng.get("endColumnIndex", col_start + 1)
+        for r in range(row_start, row_end):
+            for c in range(col_start, col_end):
+                if r < len(self._state.data_validations) and c < len(
+                    self._state.data_validations[r]
+                ):
+                    self._state.data_validations[r][c] = (
+                        copy.deepcopy(rule) if rule is not None else {}
+                    )
 
     def _apply_repeat_cell(self, body):
         if self.ignore_repeat_cell:
