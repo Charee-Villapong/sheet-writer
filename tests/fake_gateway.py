@@ -10,7 +10,11 @@ SheetsGateway プロトコルと同じ4メソッドを持ち、`batch_update` �
 - ignore_repeat_cell: 書式（WRAP 等）の変更を黙って捨てる
 - drop_appended_values: append しても値を保持しない
 - ignore_background_clear: repeatCell のフィールドマスクによる背景色の
-  除去（マスクに挙がっているのに cell に無いフィールドの削除）を無視する
+  除去（マスクに挙がっているのに cell に無いフィールドの削除）を無視する。
+  フィールドマスクの削除意味論自体は背景色に限らず全キーに一般化して
+  ある（マスクにあって cell に無いキーは削除される。textFormat の
+  サブキーも同様）。ignore_background_clear が抑止するのは背景色の
+  除去だけである
 - keep_appended_background: append した行に上の行の背景色を持ち込ませ、
   かつ背景色の除去を無視する（実 API の append 書式継承で背景が
   付いてしまう状況の再現）
@@ -109,6 +113,27 @@ def _merge(dst, src):
             _merge(dst[key], value)
         else:
             dst[key] = copy.deepcopy(value)
+
+
+def _mask_paths(fields):
+    """repeatCell の fields 文字列をキーパス（タプル）の集合にする。
+
+    "userEnteredFormat.backgroundColor" のようなドット記法と、
+    "userEnteredFormat(backgroundColor,...)" の括弧記法の先頭要素に
+    対応する。パスは userEnteredFormat 配下の相対パスで、長さ1が
+    トップレベルのキー、長さ2が textFormat.bold のようなサブキー。
+    "*" や接頭辞だけのトークンは対象にしない。
+    """
+    normalized = str(fields).replace("(", ".").replace(")", "")
+    paths = set()
+    for token in normalized.split(","):
+        parts = [part for part in token.strip().split(".") if part]
+        if parts and parts[0] == "userEnteredFormat":
+            parts = parts[1:]
+        if not parts or parts == ["*"]:
+            continue
+        paths.add(tuple(parts))
+    return paths
 
 
 class FakeGateway:
@@ -329,21 +354,24 @@ class FakeGateway:
         if self.ignore_text_format and "textFormat" in fmt:
             fmt = {k: v for k, v in fmt.items() if k != "textFormat"}
         # 実 API のフィールドマスク意味論: マスクに挙がっているのに
-        # cell に無いフィールドは削除される（背景色の除去はこれで担保する）。
+        # cell に無いフィールドは削除される。背景色に限らず全キーに
+        # 一般化する（トップレベルキーと、textFormat のサブキー）。
         fields = body.get("fields", "") or ""
-        mask_leaves = {
-            token.strip().rstrip(")").split(".")[-1].lstrip("(")
-            for token in str(fields).split(",")
-            if token.strip()
-        }
-        clear_background = {
-            key
-            for key in ("backgroundColor", "backgroundColorStyle")
-            if key in mask_leaves and key not in fmt
-        }
+        clear_top = set()
+        clear_nested = set()
+        for path in _mask_paths(fields):
+            if len(path) == 1:
+                if path[0] not in fmt:
+                    clear_top.add(path[0])
+            elif len(path) == 2:
+                parent, sub = path
+                parent_fmt = fmt.get(parent)
+                if not isinstance(parent_fmt, dict) or sub not in parent_fmt:
+                    clear_nested.add((parent, sub))
         if self.ignore_background_clear or self.keep_appended_background:
-            clear_background = set()
-        if not fmt and not clear_background:
+            # 背景色の除去だけを抑止する（他のキーの除去は通常どおり）
+            clear_top -= {"backgroundColor", "backgroundColorStyle"}
+        if not fmt and not clear_top and not clear_nested:
             return
         row_start = rng.get("startRowIndex", 0)
         row_end = rng.get("endRowIndex", row_start + 1)
@@ -357,5 +385,9 @@ class FakeGateway:
                     cell = self._state.cell_formats[r][c]
                     if fmt:
                         _merge(cell, fmt)
-                    for key in clear_background:
+                    for key in clear_top:
                         cell.pop(key, None)
+                    for parent, sub in clear_nested:
+                        parent_cell = cell.get(parent)
+                        if isinstance(parent_cell, dict):
+                            parent_cell.pop(sub, None)
