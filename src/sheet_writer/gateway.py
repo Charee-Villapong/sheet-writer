@@ -174,4 +174,4 @@ class CliGateway:
         for sheet in sheets:
             if sheet.get("properties", {}).get("title") == tab:
                 return sheet
-        return sheets[0] if sheets else {}
+        raise ValueError(f"タブが見つかりません: {tab}")
