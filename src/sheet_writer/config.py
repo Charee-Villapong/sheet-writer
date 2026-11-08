@@ -40,6 +40,10 @@ class ColumnPolicy:
             raise ValueError(f"unknown column mode: {self.mode}")
 
 
+#: vertical_alignment ルールで許す値（Sheets API の列挙値）
+VERTICAL_ALIGNMENTS = ("TOP", "MIDDLE", "BOTTOM")
+
+
 @dataclass(frozen=True)
 class Target:
     spreadsheet_id: str
@@ -48,8 +52,15 @@ class Target:
     background_rule: bool = False
     append_anchor_column: str | None = None
     checkbox_columns: tuple[str, ...] = ()
+    vertical_alignment: str | None = None
 
     def __post_init__(self) -> None:
+        alignment = self.vertical_alignment
+        if alignment is not None and alignment not in VERTICAL_ALIGNMENTS:
+            raise ValueError(
+                "vertical_alignment は TOP / MIDDLE / BOTTOM のいずれか"
+                f"である必要があります: {alignment!r}"
+            )
         anchor = self.append_anchor_column
         if anchor is not None and (
             not isinstance(anchor, str) or re.fullmatch(r"[A-Z]+", anchor) is None
@@ -100,6 +111,7 @@ def load_config(path: str | Path) -> Config:
             "background_rule",
             "append_anchor_column",
             "checkbox_columns",
+            "vertical_alignment",
         }
         for name, entry in targets_raw.items():
             if not isinstance(entry, dict):
@@ -123,6 +135,15 @@ def load_config(path: str | Path) -> Config:
                 raise ValueError(
                     f"ターゲット {name} の checkbox_columns は"
                     " 列名の配列である必要があります"
+                )
+            vertical_alignment = entry.get("vertical_alignment")
+            if vertical_alignment is not None and (
+                not isinstance(vertical_alignment, str)
+                or vertical_alignment not in VERTICAL_ALIGNMENTS
+            ):
+                raise ValueError(
+                    f"ターゲット {name} の vertical_alignment は"
+                    " TOP / MIDDLE / BOTTOM のいずれかである必要があります"
                 )
             columns_raw = entry.get("columns") or {}
             if not isinstance(columns_raw, dict):
@@ -148,6 +169,7 @@ def load_config(path: str | Path) -> Config:
                 background_rule=background_rule,
                 append_anchor_column=entry.get("append_anchor_column"),
                 checkbox_columns=tuple(checkbox_columns),
+                vertical_alignment=vertical_alignment,
             )
     except ValueError:
         raise

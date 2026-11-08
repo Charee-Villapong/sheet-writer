@@ -1,6 +1,6 @@
 """検査役: 既存シートの見切れ違反を検出し、書式のみを自動修正する。
 
-検出する違反は5種:
+検出する違反は6種:
 - ``width``: fit 列で必要幅 > 現在幅。wrap 列も設定幅 > 現在幅なら対象
   （無条件: 現在幅が既定幅 100px の列や幅未設定の列も対象で、
   未設定は既定 100px として扱う）
@@ -11,6 +11,9 @@
 - ``checkbox``: ``checkbox_columns`` で列挙した列について、データ行の
   セルに真偽値が入っているのに BOOLEAN の入力規則がない
   （ヘッダー行・空セル・真偽値でないセルは対象外）
+- ``vertical_alignment``: ``vertical_alignment`` 設定時、検査範囲
+  （ヘッダー行を含む）のセルの実効の縦位置が設定値と異なる
+  （未設定も不一致として扱う。背景色ルールと違いヘッダー行も対象）
 
 ``fix_sheet`` は書式（列幅の拡大・WRAP 設定・行高の拡大）と入力規則
 （チェックボックスの BOOLEAN 設定）のみを直す。値・数式には絶対に
@@ -304,6 +307,27 @@ def check_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Vio
                     )
                 )
 
+    if target.vertical_alignment is not None:
+        for row in range(0, n_rows):
+            for col in range(n_cols):
+                actual_alignment = _format(state, row, col).get("verticalAlignment")
+                if actual_alignment == target.vertical_alignment:
+                    continue
+                letter = column_letter(col)
+                violations.append(
+                    Violation(
+                        kind="vertical_alignment",
+                        location=f"{letter}{row + 1}",
+                        expected=target.vertical_alignment,
+                        actual=actual_alignment or "未設定",
+                        detail=(
+                            f"セル {letter}{row + 1} の縦位置 "
+                            f"{actual_alignment or '未設定'} が"
+                            f"設定値 {target.vertical_alignment} と異なる"
+                        ),
+                    )
+                )
+
     for letter in target.checkbox_columns:
         col = column_index(letter)
         for row in range(1, n_rows):
@@ -398,6 +422,19 @@ def fix_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Viola
             col = column_index(letter)
             row = int(number) - 1
             requests.append(_clear_background_request(sheet_id, row, col))
+        elif violation.kind == "vertical_alignment":
+            letter = "".join(ch for ch in str(violation.location) if ch.isalpha())
+            number = "".join(ch for ch in str(violation.location) if ch.isdigit())
+            col = column_index(letter)
+            row = int(number) - 1
+            requests.append(
+                _format_request(
+                    sheet_id,
+                    row,
+                    col,
+                    {"verticalAlignment": target.vertical_alignment},
+                )
+            )
         elif violation.kind == "checkbox":
             letter = "".join(ch for ch in str(violation.location) if ch.isalpha())
             number = "".join(ch for ch in str(violation.location) if ch.isdigit())

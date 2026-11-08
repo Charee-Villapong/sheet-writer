@@ -412,6 +412,9 @@ def append_rows(
             policy = _policy_for(target, column_letter(col))
             if policy.mode == "wrap":
                 fmt["wrapStrategy"] = "WRAP"
+            if target.vertical_alignment is not None:
+                # 縦位置ルール: 継承値ではなく設定値に強制する
+                fmt["verticalAlignment"] = target.vertical_alignment
             working[row_index][col] = fmt
             intended_formats[(row_index, col)] = fmt
             if target.append_anchor_column:
