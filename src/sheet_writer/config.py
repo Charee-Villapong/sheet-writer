@@ -44,6 +44,8 @@ class Target:
     spreadsheet_id: str
     tab: str
     columns: dict[str, ColumnPolicy] = field(default_factory=dict)
+    background_rule: bool = False
+    append_anchor_column: str | None = None
 
 
 @dataclass(frozen=True)
@@ -69,5 +71,7 @@ def load_config(path: str | Path) -> Config:
             spreadsheet_id=entry["spreadsheet_id"],
             tab=entry["tab"],
             columns=columns,
+            background_rule=bool(entry.get("background_rule") or False),
+            append_anchor_column=entry.get("append_anchor_column"),
         )
     return Config(measures=measures, targets=targets)
