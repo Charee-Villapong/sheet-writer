@@ -55,23 +55,54 @@ class Config:
 
 
 def load_config(path: str | Path) -> Config:
-    """JSON 設定ファイルを読み込む。壊れた JSON は ValueError、欠損は OSError。"""
+    """JSON 設定ファイルを読み込む。壊れた JSON は ValueError、欠損は OSError。
+
+    設定の不備（必須キーの欠落・未知のキー・値の型の誤り）は KeyError /
+    TypeError を漏らさず ValueError に包んで送出する。
+    """
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
-    measures = Measures(**(raw.get("measures") or {}))
-    targets: dict[str, Target] = {}
-    for name, entry in (raw.get("targets") or {}).items():
-        columns = {
-            letter: ColumnPolicy(
-                mode=policy.get("mode", "fit"),
-                width_px=policy.get("width_px"),
+    try:
+        if not isinstance(raw, dict):
+            raise ValueError("設定の最上位は JSON オブジェクトである必要があります")
+        measures_raw = raw.get("measures") or {}
+        if not isinstance(measures_raw, dict):
+            raise ValueError("measures は JSON オブジェクトである必要があります")
+        measures = Measures(**measures_raw)
+        targets_raw = raw.get("targets") or {}
+        if not isinstance(targets_raw, dict):
+            raise ValueError("targets は JSON オブジェクトである必要があります")
+        targets: dict[str, Target] = {}
+        for name, entry in targets_raw.items():
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    f"ターゲット {name} は JSON オブジェクトである必要があります"
+                )
+            columns_raw = entry.get("columns") or {}
+            if not isinstance(columns_raw, dict):
+                raise ValueError(
+                    f"ターゲット {name} の columns は"
+                    " JSON オブジェクトである必要があります"
+                )
+            columns: dict[str, ColumnPolicy] = {}
+            for letter, policy in columns_raw.items():
+                if not isinstance(policy, dict):
+                    raise ValueError(
+                        f"ターゲット {name} の列 {letter} の設定は"
+                        " JSON オブジェクトである必要があります"
+                    )
+                columns[letter] = ColumnPolicy(
+                    mode=policy.get("mode", "fit"),
+                    width_px=policy.get("width_px"),
+                )
+            targets[name] = Target(
+                spreadsheet_id=entry["spreadsheet_id"],
+                tab=entry["tab"],
+                columns=columns,
+                background_rule=bool(entry.get("background_rule") or False),
+                append_anchor_column=entry.get("append_anchor_column"),
             )
-            for letter, policy in (entry.get("columns") or {}).items()
-        }
-        targets[name] = Target(
-            spreadsheet_id=entry["spreadsheet_id"],
-            tab=entry["tab"],
-            columns=columns,
-            background_rule=bool(entry.get("background_rule") or False),
-            append_anchor_column=entry.get("append_anchor_column"),
-        )
+    except ValueError:
+        raise
+    except (KeyError, TypeError, AttributeError) as exc:
+        raise ValueError(f"設定が不正です: {exc}") from exc
     return Config(measures=measures, targets=targets)
