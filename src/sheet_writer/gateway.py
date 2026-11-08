@@ -96,6 +96,7 @@ class CliGateway:
                 "spreadsheetId": spreadsheet_id,
                 "range": range_a1,
                 "valueInputOption": "USER_ENTERED",
+                "insertDataOption": "INSERT_ROWS",
             },
             body={"values": values},
         )
