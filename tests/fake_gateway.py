@@ -25,6 +25,10 @@ append の配置は実 API のテーブル検出を模す:
   なら、その開始行へ挿入される。
 - 書き込み自体は従来どおり常に A 列から行う（範囲はテーブル検出の
   対象列と開始位置を決めるためにだけ使う）。
+
+update_values は実 API の values update を模す:
+- 指定範囲への直接書き込み（行の挿入・シフトはしない）。範囲より
+  下の行はそのまま残る。
 """
 
 import copy
@@ -133,6 +137,7 @@ class FakeGateway:
         # 検証用に、受け取ったリクエストと append 呼び出しを記録する
         self.batch_requests = []
         self.append_calls = []
+        self.update_calls = []
 
     # -- 状態へのアクセス（テスト側の確認用） -------------------------
     @property
@@ -239,6 +244,50 @@ class FakeGateway:
         tab = range_a1.split("!")[0] if "!" in range_a1 else "Sheet1"
         last_col = column_letter(max((len(r) for r in values), default=1) - 1)
         return f"{tab}!A{start_row}:{last_col}{end_row}"
+
+    def update_values(self, spreadsheet_id, range_a1, values):
+        """values update の模倣: 範囲へ直接書き込む（挿入・シフトなし）。"""
+        self.update_calls.append((spreadsheet_id, range_a1, copy.deepcopy(values)))
+        range_part = range_a1.rsplit("!", 1)[-1] if "!" in range_a1 else range_a1
+        range_part = range_part.strip().strip("'")
+        match = re.fullmatch(r"([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?", range_part)
+        if match:
+            start_col = _column_index(match.group(1))
+            start_row = int(match.group(2))
+        else:
+            start_col = 0
+            start_row = len(self._state.values) + 1
+        n_cols = max(
+            [len(row) for row in self._state.values]
+            + [start_col + len(row) for row in values]
+            + [0]
+        )
+        if not getattr(self._state, "entered_values", None):
+            self._state.entered_values = _synth_entered(self._state.values)
+        end_row = start_row - 1 + len(values)
+        while len(self._state.values) < end_row:
+            self._state.values.append([""] * n_cols)
+            self._state.cell_formats.append([{} for _ in range(n_cols)])
+            self._state.row_heights.append(None)
+            self._state.entered_values.append([{} for _ in range(n_cols)])
+        for row in self._state.values:
+            row.extend([""] * (n_cols - len(row)))
+        for fmt_row in self._state.cell_formats:
+            fmt_row.extend({} for _ in range(n_cols - len(fmt_row)))
+        for entered_row in self._state.entered_values:
+            entered_row.extend({} for _ in range(n_cols - len(entered_row)))
+        while len(self._state.column_widths) < n_cols:
+            self._state.column_widths.append(None)
+        for i, row in enumerate(values):
+            r = start_row - 1 + i
+            for c, value in enumerate(row):
+                self._state.values[r][start_col + c] = value
+                self._state.entered_values[r][start_col + c] = _entered_for(value)
+        tab = range_a1.split("!")[0] if "!" in range_a1 else "Sheet1"
+        last_col = column_letter(
+            start_col + max((len(r) for r in values), default=1) - 1
+        )
+        return f"{tab}!{column_letter(start_col)}{start_row}:{last_col}{end_row}"
 
     def get_state(self, spreadsheet_id, tab):
         return copy.deepcopy(self._state)

@@ -249,6 +249,16 @@ def _format_request(sheet_id: int, row: int, col: int, fmt: dict) -> dict:
     }
 
 
+def _anchor_last_row(state: SheetState, anchor_letter: str) -> int:
+    """anchor 列に値（空でない）がある最終行（1始まり）。無ければ 0。"""
+    anchor_col = column_index(anchor_letter)
+    last = 0
+    for r, row in enumerate(state.values):
+        if anchor_col < len(row) and row[anchor_col] != "":
+            last = r + 1
+    return last
+
+
 def _parse_start_row(updated_range: str, fallback: int) -> int:
     match = re.search(r"![A-Z]+\$?(\d+)", updated_range or "")
     return int(match.group(1)) if match else fallback
@@ -285,10 +295,22 @@ def append_rows(
         )
         intended_header_height = max(current_header_height, m.header_height_px)
     last_letter = column_letter(n_cols - 1) if n_cols else "A"
-    updated_range = gateway.append_values(
-        target.spreadsheet_id, f"{target.tab}!A:{last_letter}", rows
-    )
-    start_row = _parse_start_row(updated_range, fallback=len(state.values) + 1)
+    if target.append_anchor_column:
+        # 末尾判定列がある場合は追加位置を自分で計算し、append の
+        # テーブル検出に頼らず update で A 列から正確な範囲へ書く
+        start_guess = _anchor_last_row(state, target.append_anchor_column) + 1
+        end_row = start_guess + len(rows) - 1
+        updated_range = gateway.update_values(
+            target.spreadsheet_id,
+            f"{target.tab}!A{start_guess}:{last_letter}{end_row}",
+            rows,
+        )
+        start_row = _parse_start_row(updated_range, fallback=start_guess)
+    else:
+        updated_range = gateway.append_values(
+            target.spreadsheet_id, f"{target.tab}!A:{last_letter}", rows
+        )
+        start_row = _parse_start_row(updated_range, fallback=len(state.values) + 1)
     appended_rows = [start_row + i for i in range(len(rows))]
 
     # 作業用の書式グリッド（既存＋追加行ぶんを空で用意）
