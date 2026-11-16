@@ -53,8 +53,16 @@ class Target:
     append_anchor_column: str | None = None
     checkbox_columns: tuple[str, ...] = ()
     vertical_alignment: str | None = None
+    data_row_height_px: int | None = None
 
     def __post_init__(self) -> None:
+        height = self.data_row_height_px
+        if height is not None and (
+            isinstance(height, bool) or not isinstance(height, int) or height <= 0
+        ):
+            raise ValueError(
+                f"data_row_height_px は正の整数である必要があります: {height!r}"
+            )
         alignment = self.vertical_alignment
         if alignment is not None and alignment not in VERTICAL_ALIGNMENTS:
             raise ValueError(
@@ -112,6 +120,7 @@ def load_config(path: str | Path) -> Config:
             "append_anchor_column",
             "checkbox_columns",
             "vertical_alignment",
+            "data_row_height_px",
         }
         for name, entry in targets_raw.items():
             if not isinstance(entry, dict):
@@ -145,6 +154,16 @@ def load_config(path: str | Path) -> Config:
                     f"ターゲット {name} の vertical_alignment は"
                     " TOP / MIDDLE / BOTTOM のいずれかである必要があります"
                 )
+            data_row_height_px = entry.get("data_row_height_px")
+            if data_row_height_px is not None and (
+                isinstance(data_row_height_px, bool)
+                or not isinstance(data_row_height_px, int)
+                or data_row_height_px <= 0
+            ):
+                raise ValueError(
+                    f"ターゲット {name} の data_row_height_px は"
+                    " 正の整数である必要があります"
+                )
             columns_raw = entry.get("columns") or {}
             if not isinstance(columns_raw, dict):
                 raise ValueError(
@@ -170,6 +189,7 @@ def load_config(path: str | Path) -> Config:
                 append_anchor_column=entry.get("append_anchor_column"),
                 checkbox_columns=tuple(checkbox_columns),
                 vertical_alignment=vertical_alignment,
+                data_row_height_px=data_row_height_px,
             )
     except ValueError:
         raise

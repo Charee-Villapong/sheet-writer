@@ -427,14 +427,20 @@ def append_rows(
     intended_heights: dict[int, int] = {}
     for i, row in enumerate(rows):
         row_index = start_row - 1 + i
-        lines = 1
-        for col in range(n_cols):
-            text = row[col] if col < len(row) else ""
-            lines = max(
-                lines,
-                mz.cell_lines(text, widths[column_letter(col)], m=m),
-            )
-        height = mz.row_height_px(lines, m)
+        if target.data_row_height_px is not None:
+            # データ行の高さ固定: 折り返し行数からの計算値ではなく設定値に
+            # そろえる。wrap 列の長文で高さが内容に引きずられると、固定高の
+            # 既存行とずれてしまうため、追加行も同じ高さに固定する
+            height = target.data_row_height_px
+        else:
+            lines = 1
+            for col in range(n_cols):
+                text = row[col] if col < len(row) else ""
+                lines = max(
+                    lines,
+                    mz.cell_lines(text, widths[column_letter(col)], m=m),
+                )
+            height = mz.row_height_px(lines, m)
         intended_heights[start_row + i] = height
         requests.append(_dimension_request(sheet_id, "ROWS", row_index, height))
 

@@ -7,6 +7,7 @@ SheetsGateway プロトコルと同じ4メソッドを持ち、`batch_update` �
 
 検証失敗系のテストのために、変更の一部を無視するモードを持つ:
 - ignore_column_widths: 列幅の変更を黙って捨てる
+- ignore_row_heights: 行高の変更を黙って捨てる
 - ignore_repeat_cell: 書式（WRAP 等）の変更を黙って捨てる
 - drop_appended_values: append しても値を保持しない
 - ignore_background_clear: repeatCell のフィールドマスクによる背景色の
@@ -165,6 +166,7 @@ class FakeGateway:
         state,
         *,
         ignore_column_widths=False,
+        ignore_row_heights=False,
         ignore_repeat_cell=False,
         drop_appended_values=False,
         ignore_background_clear=False,
@@ -179,6 +181,7 @@ class FakeGateway:
                 [{} for _ in range(len(row))] for row in self._state.values
             ]
         self.ignore_column_widths = ignore_column_widths
+        self.ignore_row_heights = ignore_row_heights
         self.ignore_repeat_cell = ignore_repeat_cell
         self.drop_appended_values = drop_appended_values
         self.ignore_background_clear = ignore_background_clear
@@ -382,6 +385,8 @@ class FakeGateway:
                 return
             target = self._state.column_widths
         elif rng.get("dimension") == "ROWS":
+            if self.ignore_row_heights:
+                return
             target = self._state.row_heights
         else:
             return
