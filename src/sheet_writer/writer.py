@@ -546,6 +546,33 @@ def _verify(
                             f"セル {column_letter(col)}{row_number} に背景色 "
                             f"{key} が残っている: actual={actual_fmt.get(key)}"
                         )
+            if target.append_anchor_column:
+                # 負側の明示チェック（anchor 経路）: リセット対象の書式が
+                # 意図に無いのに残っていたら不一致。背景色キーは
+                # background_rule 有効時に上の専用チェックが担う
+                for key in _FORMAT_RESET_KEYS:
+                    if key == "textFormat":
+                        continue
+                    if background_rule and key in _BACKGROUND_KEYS:
+                        continue
+                    if key not in intended and key in actual_fmt:
+                        problems.append(
+                            f"セル {column_letter(col)}{row_number} に"
+                            f"リセット対象の書式 {key} が残っている: "
+                            f"actual={actual_fmt.get(key)}"
+                        )
+                intended_tf = intended.get("textFormat")
+                if not isinstance(intended_tf, dict):
+                    intended_tf = {}
+                actual_tf = actual_fmt.get("textFormat")
+                if isinstance(actual_tf, dict):
+                    for key in _TEXT_FORMAT_KEYS:
+                        if key not in intended_tf and key in actual_tf:
+                            problems.append(
+                                f"セル {column_letter(col)}{row_number} に"
+                                f"リセット対象の書式 textFormat.{key} が"
+                                f"残っている: actual={actual_tf.get(key)}"
+                            )
             intended_text_format = intended.get("textFormat")
             if isinstance(intended_text_format, dict):
                 actual_text_format = actual_fmt.get("textFormat")
