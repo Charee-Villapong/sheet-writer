@@ -14,6 +14,17 @@ from typing import Callable, Protocol
 
 CLI_PATH = "/opt/hatch/bin/hatch_gws_cli"
 
+
+def quote_tab(tab: str) -> str:
+    """タブ名を A1 記法のシート名としてクォートする。
+
+    スペース・記号・数字始まり等を含むタブ名でも範囲として解釈される
+    よう、常にシングルクォートで囲む（内部の ``'`` は ``''`` に
+    エスケープする）。範囲文字列を組み立てる箇所はすべてこれを通す。
+    """
+    return "'" + tab.replace("'", "''") + "'"
+
+
 _STATE_FIELDS = (
     "sheets(properties(sheetId,title),"
     "data(rowMetadata,columnMetadata,"
@@ -132,7 +143,7 @@ class CliGateway:
             ["spreadsheets", "get"],
             params={
                 "spreadsheetId": spreadsheet_id,
-                "ranges": tab,
+                "ranges": quote_tab(tab),
                 "fields": _STATE_FIELDS,
             },
         )

@@ -16,7 +16,7 @@ from datetime import date, datetime
 from sheet_writer import measures as mz
 from sheet_writer.config import ColumnPolicy, Measures, Target
 from sheet_writer.errors import VerificationError
-from sheet_writer.gateway import SheetsGateway, SheetState
+from sheet_writer.gateway import SheetsGateway, SheetState, quote_tab
 
 # 継承してよい書式キー（API の出力専用キーは送り返さない）
 _INHERIT_KEYS = (
@@ -355,13 +355,13 @@ def append_rows(
         end_row = start_guess + len(rows) - 1
         updated_range = gateway.update_values(
             target.spreadsheet_id,
-            f"{target.tab}!A{start_guess}:{last_letter}{end_row}",
+            f"{quote_tab(target.tab)}!A{start_guess}:{last_letter}{end_row}",
             rows,
         )
         start_row = _parse_start_row(updated_range, fallback=start_guess)
     else:
         updated_range = gateway.append_values(
-            target.spreadsheet_id, f"{target.tab}!A:{last_letter}", rows
+            target.spreadsheet_id, f"{quote_tab(target.tab)}!A:{last_letter}", rows
         )
         start_row = _parse_start_row(updated_range, fallback=len(state.values) + 1)
     appended_rows = [start_row + i for i in range(len(rows))]
