@@ -1,10 +1,13 @@
 """R3: fix_sheet の戻り値は、実際に修正した違反の全件を含む。
 
 仕様:
-- fix_sheet の戻り値（＝ CLI --fix の報告件数）は修正した違反の全件。
-- 特に「折り返し違反＋行高違反が併存するケース」で、両方とも
-  戻り値に含まれる（片方だけ報告して終わらない）。
-- 現行で満たせば特性テストとして通過してよい。
+- fix_sheet の戻り値（＝ CLI --fix の報告件数）は「修正リクエストを
+  送り、最終の再検査で解消を確認できた違反」の全件。
+- 折り返し違反の修正で新たに現れた行高違反も、実際に直したものは
+  戻り値に含まれる（事前 check の顔ぶれと一致するとは限らない）。
+- 逆に、幅修正などで自然解消した行高違反（修正リクエストを送って
+  いないもの）は戻り値に含めない。また、gateway が修正を無視して
+  解消しなかった違反も「直した」とは報告しない。
 """
 
 from collections import Counter
@@ -67,15 +70,73 @@ class TestFixReportCompleteness:
         fixed = fix_sheet(gateway, combined_target(make_target), m)
         fixed_kinds = kinds(fixed)
         assert fixed_kinds["wrap"] == 1
-        assert fixed_kinds["row_height"] == 1
+        # 行高は B3（3行目）に加え、B2 への WRAP 設定で折り返し行数が
+        # 増えて再検査で新たに現れた 2行目分も、実際に直したので含む
+        assert fixed_kinds["row_height"] == 2
+        locations = {v.location for v in fixed if v.kind == "row_height"}
+        assert locations == {"2行目", "3行目"}
 
-    def test_fix_returns_every_violation_found_by_check(self, m, make_target):
+    def test_fix_returns_every_actually_fixed_violation(self, m, make_target):
         gateway = combined_gateway()
         target = combined_target(make_target)
         found = check_sheet(gateway, target, m)
         fixed = fix_sheet(gateway, target, m)
-        # 件数も種別構成も、事前 check で見つかった違反と一致する
-        assert len(fixed) == len(found)
-        assert kinds(fixed) == kinds(found)
+        # 事前 check で見つかった違反は、直ったものは全て含まれる
+        fixed_keys = {(v.kind, v.location) for v in fixed}
+        for violation in found:
+            assert (violation.kind, violation.location) in fixed_keys
+        # 戻り値は「実際に直した全件」: wrap 1件 + 行高 2件
+        assert len(fixed) == 3
         # 修正後は違反が残っていない
         assert check_sheet(gateway, target, m) == []
+
+
+class TestFixReportAccuracy:
+    def test_incidentally_resolved_row_height_is_not_reported(self, m, make_target):
+        # B 列（wrap・設定幅300）が現在幅100のため width 違反があり、
+        # WRAP 済みセルの折り返しで row_height 違反も併存する。
+        # 幅を300へ広げると1行に収まって行高違反は自然解消するが、
+        # 行高の修正リクエストは送っていないので戻り値に含めない
+        state = make_state(
+            [["名前", "メモ"], ["abc", "あ" * 20]],
+            column_widths=[100, 100],
+            row_heights=[38, 26],
+            cell_formats=[[{}, {}], [{}, {"wrapStrategy": "WRAP"}]],
+        )
+        gateway = FakeGateway(state)
+        target = make_target(
+            {
+                "A": ColumnPolicy(mode="fit"),
+                "B": ColumnPolicy(mode="wrap", width_px=300),
+            }
+        )
+        found = check_sheet(gateway, target, m)
+        assert kinds(found) == Counter({"width": 1, "row_height": 1})
+        fixed = fix_sheet(gateway, target, m)
+        assert kinds(fixed) == Counter({"width": 1})
+        # 行高は触っていない（自然解消）ことも状態から確認する
+        assert gateway.state.row_heights[1] == 26
+        assert check_sheet(gateway, target, m) == []
+
+    def test_unresolved_violation_is_not_reported(self, m, make_target):
+        # gateway が行高の修正を無視する場合は、解消していないので
+        # 「直した」とは報告しない
+        state = make_state(
+            [["名前", "メモ"], ["abc", "あ" * 20]],
+            column_widths=[100, 100],
+            row_heights=[38, 26],
+            cell_formats=[[{}, {}], [{}, {"wrapStrategy": "WRAP"}]],
+        )
+        gateway = FakeGateway(state, ignore_row_heights=True)
+        target = make_target(
+            {
+                "A": ColumnPolicy(mode="fit"),
+                "B": ColumnPolicy(mode="wrap", width_px=100),
+            }
+        )
+        found = check_sheet(gateway, target, m)
+        assert kinds(found) == Counter({"row_height": 1})
+        fixed = fix_sheet(gateway, target, m)
+        assert fixed == []
+        # 違反自体は残ったままである
+        assert kinds(check_sheet(gateway, target, m)) == Counter({"row_height": 1})

@@ -386,9 +386,12 @@ def check_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Vio
 
 
 def fix_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Violation]:
-    """違反を書式と入力規則のみで修正し、修正した違反を返す。
+    """違反を書式と入力規則のみで修正し、実際に直った違反を返す。
 
-    値・数式には触らない。
+    値・数式には触らない。戻り値は「修正リクエストを送り、最終の
+    再検査で解消を確認できた違反」であり、初回検出の顔ぶれとは
+    一致しないことがある（幅修正で自然解消した行高違反は含まず、
+    折り返し設定で新たに現れて直した行高違反は含む）。
     """
     violations = check_sheet(gateway, target, m)
     if not violations:
@@ -397,6 +400,8 @@ def fix_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Viola
     state = gateway.get_state(target.spreadsheet_id, target.tab)
     sheet_id = state.sheet_id
     requests: list[dict] = []
+    # 修正リクエストを送った違反（(kind, location) → Violation）
+    addressed: dict[tuple[str, str], Violation] = {}
 
     grown_columns: set[int] = set()
     for violation in violations:
@@ -451,6 +456,9 @@ def fix_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Viola
             col = column_index(letter)
             row = int(number) - 1
             requests.append(_set_checkbox_request(sheet_id, row, col))
+        if violation.kind != "row_height":
+            # 行高はこのループでは直さない（幅・折り返しの後に回す）
+            addressed[(violation.kind, violation.location)] = violation
 
     if requests:
         gateway.batch_update(target.spreadsheet_id, requests)
@@ -470,7 +478,13 @@ def fix_sheet(gateway: SheetsGateway, target: Target, m: Measures) -> list[Viola
             _dimension_request(sheet_id, "ROWS", row, int(violation.expected))
         )
         fixed_rows.add(row)
+        addressed[(violation.kind, violation.location)] = violation
     if height_requests:
         gateway.batch_update(target.spreadsheet_id, height_requests)
 
-    return violations
+    # 戻り値は「リクエストを送り、最終状態で解消を確認できた違反」。
+    # 初回検出のまま返すと、自然解消した違反の過大報告と、再検査で
+    # 新たに現れて直した違反の過小報告が起きる
+    final = check_sheet(gateway, target, m)
+    unresolved = {(v.kind, v.location) for v in final}
+    return [v for key, v in addressed.items() if key not in unresolved]
