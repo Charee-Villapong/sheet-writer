@@ -86,6 +86,11 @@ class Target:
                 f"{cols!r}"
             )
         object.__setattr__(self, "checkbox_columns", tuple(cols))
+        for letter in self.columns:
+            if not isinstance(letter, str) or re.fullmatch(r"[A-Z]+", letter) is None:
+                raise ValueError(
+                    "columns のキーは大文字の列名である必要があります: " f"{letter!r}"
+                )
 
 
 @dataclass(frozen=True)
